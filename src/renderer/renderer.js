@@ -6,10 +6,23 @@
 (() => {
     'use strict';
 
+    console.log('[nterm renderer] loaded — v5 persistent settings');
+
     // ─── State ───────────────────────────────────────────────
     const terminals = new Map();  // sessionId → { term, fitAddon, element, tab, label, status }
     let activeSessionId = null;
     let sessionData = null;
+    let settings = null;  // hydrated from electron-store on startup
+
+    // ─── Last-Used Credentials ───────────────────────────────
+    // Populated from persisted settings, updated in-memory,
+    // and written back to store on change.
+    let lastUsedCreds = {
+        username: '',
+        authMethod: 'password',
+        privateKeyPath: '',
+        legacyMode: false,
+    };
 
     // ─── DOM refs ────────────────────────────────────────────
     const tabList        = document.getElementById('tab-list');
@@ -34,57 +47,145 @@
     const rowKeyfile     = document.getElementById('row-keyfile');
     const rowPassphrase  = document.getElementById('row-passphrase');
 
+    // ─── Settings: Load & Apply ──────────────────────────────
+    // Called once on startup before anything renders.
+
+    async function loadSettings() {
+        try {
+            settings = await window.nterm.getSettings();
+            console.log('[nterm] Settings loaded:', settings);
+        } catch (err) {
+            console.error('[nterm] Failed to load settings, using defaults:', err);
+            return;
+        }
+
+        // Apply theme (handles migration from 'dark'/'light' to named themes)
+        if (settings.theme) {
+            applyAndGetTerminalTheme(settings.theme);
+        }
+
+        // Apply sidebar width
+        if (settings.sidebarWidth) {
+            sidebar.style.width = `${settings.sidebarWidth}px`;
+        }
+
+        // Hydrate last-used credentials from persisted defaults
+        if (settings.defaultUsername) {
+            lastUsedCreds.username = settings.defaultUsername;
+        }
+        if (settings.defaultAuthMethod) {
+            lastUsedCreds.authMethod = settings.defaultAuthMethod;
+        }
+        if (settings.defaultPrivateKeyPath) {
+            lastUsedCreds.privateKeyPath = settings.defaultPrivateKeyPath;
+        }
+        if (settings.defaultLegacyMode !== undefined) {
+            lastUsedCreds.legacyMode = settings.defaultLegacyMode;
+        }
+
+        // Auto-load last sessions file
+        if (settings.lastSessionsFile) {
+            try {
+                const result = await window.nterm.loadLastSessionsFile();
+                if (result && !result.error) {
+                    sessionData = result.sessions;
+                    renderSessionTree(sessionData);
+                    setStatus(`Loaded: ${result.filePath.split(/[\\/]/).pop()}`);
+                }
+            } catch (err) {
+                console.warn('[nterm] Failed to auto-load sessions:', err);
+            }
+        }
+    }
+
+    // ─── Settings: Persist Credentials ───────────────────────
+    // Called after any credential change (dialog or direct connect)
+
+    function persistCredentials() {
+        window.nterm.setSettings({
+            defaultUsername: lastUsedCreds.username,
+            defaultAuthMethod: lastUsedCreds.authMethod,
+            defaultPrivateKeyPath: lastUsedCreds.privateKeyPath,
+            defaultLegacyMode: lastUsedCreds.legacyMode,
+        });
+    }
+
     // ─── Theme ───────────────────────────────────────────────
 
-    document.getElementById('btn-theme-toggle').addEventListener('click', () => {
-        const current = document.documentElement.getAttribute('data-theme');
-        const next = current === 'light' ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', next);
-        for (const [, session] of terminals) {
-            session.term.options.theme = getTerminalTheme();
-        }
+    document.getElementById('btn-devtools').addEventListener('click', () => {
+        console.log('[nterm] DevTools button clicked');
+        window.nterm.openDevTools();
     });
 
-    function getTerminalTheme() {
-        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        if (isLight) {
-            return {
-                background: '#eff1f5', foreground: '#4c4f69', cursor: '#dc8a78',
-                selectionBackground: '#ccd0da',
-                black: '#5c5f77', red: '#d20f39', green: '#40a02b', yellow: '#df8e1d',
-                blue: '#1e66f5', magenta: '#8839ef', cyan: '#179299', white: '#acb0be',
-                brightBlack: '#6c6f85', brightRed: '#d20f39', brightGreen: '#40a02b',
-                brightYellow: '#df8e1d', brightBlue: '#1e66f5', brightMagenta: '#8839ef',
-                brightCyan: '#179299', brightWhite: '#bcc0cc',
-            };
+    // Build theme selector dropdown
+    const themeSelect = document.getElementById('theme-select');
+    (function populateThemeSelector() {
+        const list = window.NtermThemes.getThemeList();
+        const darkGroup = document.createElement('optgroup');
+        darkGroup.label = 'Dark';
+        const lightGroup = document.createElement('optgroup');
+        lightGroup.label = 'Light';
+
+        for (const t of list) {
+            const opt = document.createElement('option');
+            opt.value = t.name;
+            opt.textContent = t.label;
+            if (t.type === 'dark') darkGroup.appendChild(opt);
+            else lightGroup.appendChild(opt);
         }
-        return {
-            background: '#1e1e2e', foreground: '#cdd6f4', cursor: '#f5e0dc',
-            selectionBackground: '#45475a',
-            black: '#45475a', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af',
-            blue: '#89b4fa', magenta: '#cba6f7', cyan: '#94e2d5', white: '#bac2de',
-            brightBlack: '#585b70', brightRed: '#f38ba8', brightGreen: '#a6e3a1',
-            brightYellow: '#f9e2af', brightBlue: '#89b4fa', brightMagenta: '#cba6f7',
-            brightCyan: '#94e2d5', brightWhite: '#a6adc8',
-        };
+        themeSelect.appendChild(darkGroup);
+        themeSelect.appendChild(lightGroup);
+    })();
+
+    themeSelect.addEventListener('change', () => {
+        const themeName = themeSelect.value;
+        const xtermTheme = window.NtermThemes.applyTheme(themeName);
+        for (const [, session] of terminals) {
+            session.term.options.theme = xtermTheme;
+        }
+        // Persist theme choice
+        window.nterm.setSetting('theme', themeName);
+    });
+
+    /** Apply named theme and return xterm theme object */
+    function applyAndGetTerminalTheme(themeName) {
+        const resolved = window.NtermThemes.migrateLegacyTheme(themeName || 'catppuccin-mocha');
+        themeSelect.value = resolved;
+        return window.NtermThemes.applyTheme(resolved);
+    }
+
+    /** Get current xterm theme (for new terminals) */
+    function getTerminalTheme() {
+        const name = document.documentElement.getAttribute('data-theme-name');
+        const theme = window.NtermThemes.getTheme(name);
+        return theme.xterm;
     }
 
     // ─── Connection Dialog ───────────────────────────────────
 
     function showConnectDialog(prefill) {
-        // Reset form
+        console.log('[nterm] showConnectDialog called', { prefill, lastUsedCreds });
+        const hasAuth = prefill?.username || prefill?.password || prefill?.privateKeyPath;
+        const defaults = hasAuth ? {} : lastUsedCreds;
+
         dlgHost.value = prefill?.host || '';
         dlgPort.value = prefill?.port || 22;
-        dlgUsername.value = prefill?.username || '';
+        dlgUsername.value = prefill?.username || defaults.username || '';
         dlgPassword.value = prefill?.password || '';
-        dlgKeypath.value = prefill?.privateKeyPath || '';
+        dlgKeypath.value = prefill?.privateKeyPath || defaults.privateKeyPath || '';
         dlgPassphrase.value = '';
-        dlgLegacy.checked = prefill?.legacyMode || false;
-        dlgAuthMethod.value = prefill?.authMethod || 'password';
+        dlgLegacy.checked = prefill?.legacyMode ?? defaults.legacyMode ?? false;
+        dlgAuthMethod.value = prefill?.authMethod || defaults.authMethod || 'password';
         updateAuthFields();
 
         connectDialog.style.display = 'flex';
-        dlgHost.focus();
+        if (!dlgHost.value) {
+            dlgHost.focus();
+        } else if (!dlgUsername.value) {
+            dlgUsername.focus();
+        } else {
+            dlgPassword.focus();
+        }
     }
 
     function hideConnectDialog() {
@@ -93,7 +194,6 @@
         dlgPassphrase.value = '';
     }
 
-    // Auth method switching
     function updateAuthFields() {
         const method = dlgAuthMethod.value;
         rowPassword.style.display   = (method === 'password' || method === 'key-and-password') ? 'block' : 'none';
@@ -103,7 +203,6 @@
 
     dlgAuthMethod.addEventListener('change', updateAuthFields);
 
-    // Browse for key file — uses native Electron dialog via preload
     document.getElementById('btn-browse-key').addEventListener('click', async () => {
         const keyPath = await window.nterm.selectKeyFile();
         if (keyPath) {
@@ -111,7 +210,6 @@
         }
     });
 
-    // Dialog buttons
     document.getElementById('btn-quick-connect').addEventListener('click', () => showConnectDialog());
     document.getElementById('btn-dialog-close').addEventListener('click', hideConnectDialog);
     document.getElementById('btn-dialog-cancel').addEventListener('click', hideConnectDialog);
@@ -124,6 +222,8 @@
             return;
         }
 
+        const method = dlgAuthMethod.value;
+
         const config = {
             host,
             port: parseInt(dlgPort.value) || 22,
@@ -131,8 +231,6 @@
             legacyMode: dlgLegacy.checked,
             tryKeyboard: true,
         };
-
-        const method = dlgAuthMethod.value;
 
         if (method === 'password' || method === 'key-and-password') {
             config.password = dlgPassword.value;
@@ -147,6 +245,16 @@
             config.useAgent = true;
         }
 
+        // Remember credentials (in-memory + persisted)
+        lastUsedCreds = {
+            username,
+            authMethod: method,
+            privateKeyPath: (method === 'keyfile' || method === 'key-and-password') ? dlgKeypath.value : lastUsedCreds.privateKeyPath,
+            legacyMode: dlgLegacy.checked,
+        };
+        console.log('[nterm] lastUsedCreds saved (dialog):', lastUsedCreds);
+        persistCredentials();
+
         hideConnectDialog();
         connectSession({
             ...config,
@@ -154,11 +262,15 @@
         });
     });
 
-    // Ctrl+N shortcut
+    // Ctrl+N shortcut, F12 for DevTools
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'n') {
             e.preventDefault();
             showConnectDialog();
+        }
+        if (e.key === 'F12') {
+            e.preventDefault();
+            window.nterm.openDevTools();
         }
         if (e.key === 'Escape' && connectDialog.style.display !== 'none') {
             hideConnectDialog();
@@ -186,6 +298,10 @@
         sessionData = result.sessions;
         renderSessionTree(sessionData);
         setStatus(`Loaded: ${result.filePath.split(/[\\/]/).pop()}`);
+
+        // Path is also persisted by main process in sessions:load-file handler,
+        // but we set it from renderer too for the auto-load-on-next-launch path
+        window.nterm.setSetting('lastSessionsFile', result.filePath);
     });
 
     function renderSessionTree(data) {
@@ -215,15 +331,13 @@
                 const el = document.createElement('div');
                 el.className = 'tree-session';
                 el.setAttribute('data-folder', folderName);
+                el.style.display = 'none';
                 el.innerHTML = `<span class="dot"></span>${session.display_name || session.host}`;
 
-                // Double-click to connect with prefilled dialog
                 el.addEventListener('dblclick', () => {
                     if (session.password) {
-                        // Session has credentials — connect directly
                         connectSession(session);
                     } else {
-                        // Open dialog with session info prefilled
                         showConnectDialog(session);
                     }
                 });
@@ -248,9 +362,22 @@
         const sessionId = crypto.randomUUID();
         const label = config.display_name || `${config.username}@${config.host}`;
 
+        // Update last-used creds from direct connects too
+        if (config.username) {
+            lastUsedCreds.username = config.username;
+        }
+        if (config.privateKeyPath) {
+            lastUsedCreds.privateKeyPath = config.privateKeyPath;
+            lastUsedCreds.authMethod = config.password ? 'key-and-password' : 'keyfile';
+        }
+        if (config.legacyMode !== undefined) {
+            lastUsedCreds.legacyMode = config.legacyMode;
+        }
+        console.log('[nterm] lastUsedCreds saved (direct):', { ...lastUsedCreds });
+        persistCredentials();
+
         setStatus(`Connecting to ${config.host}...`);
 
-        // Create terminal tab immediately (shows "connecting..." state)
         createTerminalTab(sessionId, label);
 
         try {
@@ -299,13 +426,13 @@
         pane.id = `pane-${sessionId}`;
         termContainer.appendChild(pane);
 
-        // xterm.js
+        // xterm.js — uses persisted settings for font, cursor, scrollback
         const term = new Terminal({
-            fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
-            fontSize: 14,
-            cursorBlink: true,
-            cursorStyle: 'block',
-            scrollback: 10000,
+            fontFamily: settings?.terminalFontFamily || "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+            fontSize: settings?.terminalFontSize || 14,
+            cursorBlink: settings?.cursorBlink ?? true,
+            cursorStyle: settings?.cursorStyle || 'block',
+            scrollback: settings?.scrollbackLines || 10000,
             theme: getTerminalTheme(),
             allowProposedApi: true,
         });
@@ -323,6 +450,42 @@
         // Resize → main process → SSHManager → PTY
         term.onResize(({ cols, rows }) => {
             window.nterm.resize(sessionId, cols, rows);
+        });
+
+        // ─── Copy / Paste ────────────────────────────────────
+        if (term.textarea) {
+            term.textarea.addEventListener('paste', (e) => {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                const text = e.clipboardData?.getData('text');
+                if (text) {
+                    checkAndSendPaste(sessionId, text);
+                }
+            }, { capture: true });
+        }
+
+        term.attachCustomKeyEventHandler((event) => {
+            const mod = event.ctrlKey || event.metaKey;
+            if (event.type !== 'keydown') return true;
+
+            if (mod && event.key === 'c') {
+                if (term.hasSelection()) {
+                    navigator.clipboard.writeText(term.getSelection());
+                    term.clearSelection();
+                    return false;
+                }
+                return true;
+            }
+
+            return true;
+        });
+
+        pane.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = e.clipboardData?.getData('text');
+            if (text) {
+                checkAndSendPaste(sessionId, text);
+            }
         });
 
         // Store
@@ -379,8 +542,6 @@
     }
 
     // ─── SSHManager Messages ─────────────────────────────────
-    // All SSH messages come through a single channel with the
-    // same protocol as the VS Code extension.
 
     window.nterm.onMessage((message) => {
         const { sessionId, type, payload } = message;
@@ -410,11 +571,9 @@
                 break;
 
             case 'metadata':
-                // Could display negotiated algorithms, etc.
                 break;
 
             case 'diagnostic':
-                // Diagnostic data — already printed to terminal as output
                 break;
         }
     });
@@ -463,8 +622,68 @@
         if (dragging) {
             dragging = false;
             document.body.style.cursor = '';
+            // Persist sidebar width
+            const width = parseInt(sidebar.style.width) || 220;
+            window.nterm.setSetting('sidebarWidth', width);
         }
     });
+
+    // ─── Paste Handling (multi-line warning) ────────────────
+
+    function checkAndSendPaste(sessionId, text) {
+        const lines = text.split(/\r?\n/);
+        const threshold = settings?.pasteWarningThreshold ?? 1;
+        if (lines.length > threshold) {
+            showPasteWarning(sessionId, text, lines.length);
+        } else {
+            window.nterm.send(sessionId, text);
+        }
+    }
+
+    function showPasteWarning(sessionId, text, lineCount) {
+        const overlay = document.getElementById('paste-dialog');
+        const preview = document.getElementById('paste-preview');
+        const countEl = document.getElementById('paste-line-count');
+
+        const previewLines = text.split(/\r?\n/).slice(0, 10);
+        let previewText = previewLines.join('\n');
+        if (lineCount > 10) {
+            previewText += `\n... (${lineCount - 10} more lines)`;
+        }
+        preview.textContent = previewText;
+        countEl.textContent = `${lineCount} lines`;
+
+        overlay.style.display = 'flex';
+
+        const btnConfirm = document.getElementById('btn-paste-confirm');
+        const btnCancel  = document.getElementById('btn-paste-cancel');
+
+        function cleanup() {
+            overlay.style.display = 'none';
+            btnConfirm.removeEventListener('click', onConfirm);
+            btnCancel.removeEventListener('click', onCancel);
+            const session = terminals.get(sessionId);
+            if (session) session.term.focus();
+        }
+
+        function onConfirm() {
+            cleanup();
+            window.nterm.send(sessionId, text);
+        }
+
+        function onCancel() {
+            cleanup();
+        }
+
+        btnConfirm.addEventListener('click', onConfirm);
+        btnCancel.addEventListener('click', onCancel);
+
+        function onKey(e) {
+            if (e.key === 'Escape') { onCancel(); document.removeEventListener('keydown', onKey); }
+            if (e.key === 'Enter')  { onConfirm(); document.removeEventListener('keydown', onKey); }
+        }
+        document.addEventListener('keydown', onKey);
+    }
 
     // ─── Helpers ─────────────────────────────────────────────
 
@@ -475,5 +694,70 @@
     function updateSessionCount() {
         statusSessions.textContent = `${terminals.size} session${terminals.size !== 1 ? 's' : ''}`;
     }
+
+    // ─── About Dialog ─────────────────────────────────────────
+
+    const aboutDialog   = document.getElementById('about-dialog');
+    const aboutVersion  = document.getElementById('about-version');
+    const aboutRuntime  = document.getElementById('about-runtime');
+    const aboutRepoLink = document.getElementById('about-repo-link');
+
+    async function showAboutDialog() {
+        try {
+            const info = await window.nterm.getVersionInfo();
+            aboutVersion.textContent = `v${info.appVersion}`;
+            aboutRuntime.innerHTML = [
+                `Electron ${info.electronVersion}`,
+                `Chrome ${info.chromeVersion}`,
+                `Node ${info.nodeVersion}`,
+                info.platform,
+            ].join(' · ');
+        } catch (err) {
+            aboutVersion.textContent = '';
+            aboutRuntime.textContent = '';
+        }
+        aboutDialog.style.display = 'flex';
+    }
+
+    function hideAboutDialog() {
+        aboutDialog.style.display = 'none';
+    }
+
+    document.getElementById('btn-about-close').addEventListener('click', hideAboutDialog);
+    document.getElementById('btn-about-ok').addEventListener('click', hideAboutDialog);
+
+    aboutRepoLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        // shell.openExternal is handled via the main process menu,
+        // but for the rendered link we open it through the OS
+        window.open('https://github.com/scottpeterman/nterm-js', '_blank');
+    });
+
+    // Close About on Escape
+    aboutDialog.addEventListener('click', (e) => {
+        if (e.target === aboutDialog) hideAboutDialog();
+    });
+
+    // ─── Menu Events (from main process) ──────────────────────
+
+    window.nterm.onShowAbout(() => showAboutDialog());
+
+    window.nterm.onMenuNewConnection(() => showConnectDialog());
+
+    window.nterm.onMenuLoadSessions(async () => {
+        const result = await window.nterm.loadSessionsFile();
+        if (!result) return;
+        if (result.error) {
+            setStatus(`Error: ${result.error}`);
+            return;
+        }
+        sessionData = result.sessions;
+        renderSessionTree(sessionData);
+        setStatus(`Loaded: ${result.filePath.split(/[\\/]/).pop()}`);
+        window.nterm.setSetting('lastSessionsFile', result.filePath);
+    });
+
+    // ─── Startup ─────────────────────────────────────────────
+    loadSettings();
 
 })();

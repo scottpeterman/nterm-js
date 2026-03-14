@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>nterm</title>
+    <title>nterm-js</title>
 <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,13 +12,14 @@
     <!-- ─── Top Bar ──────────────────────────────────────────── -->
     <div id="topbar">
         <div class="topbar-left">
-            <span class="app-title">nterm</span>
+            <span class="app-title">nterm-js</span>
         </div>
         <div class="topbar-center">
             <button id="btn-quick-connect" title="New Connection (Ctrl+N)">+ Connect</button>
         </div>
         <div class="topbar-right">
-            <button id="btn-theme-toggle" title="Toggle theme">&#x263E;</button>
+            <button id="btn-devtools" title="Open DevTools (F12)">&#x1F41B;</button>
+            <select id="theme-select" title="Theme"></select>
         </div>
     </div>
 
@@ -48,9 +49,9 @@
             <div id="terminal-container">
                 <div id="welcome" class="welcome-screen">
                     <div class="welcome-content">
-                        <h2>nterm</h2>
+                        <h2>nterm-js</h2>
                         <p>Load a sessions file or click <strong>+ Connect</strong> above.</p>
-                        <p class="welcome-hint">A network-aware SSH terminal that understands what it sees.</p>
+                        <p class="welcome-hint">A network-centric SSH terminal that understands what it sees.</p>
                     </div>
                 </div>
             </div>
@@ -123,6 +124,91 @@
         </div>
     </div>
 
+    <!-- ─── Multi-Line Paste Warning (modal) ─────────────────── -->
+    <div id="paste-dialog" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <span>⚠ Multi-Line Paste</span>
+            </div>
+            <div class="modal-body">
+                <p style="margin: 0 0 8px 0;">
+                    You're about to paste <strong id="paste-line-count"></strong> into the terminal.
+                    This will send each line as a separate command.
+                </p>
+                <pre id="paste-preview" style="
+                    background: var(--bg-secondary, #313244);
+                    color: var(--fg-secondary, #a6adc8);
+                    padding: 8px 10px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    white-space: pre;
+                    margin: 0;
+                    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+                "></pre>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-paste-cancel" class="btn-secondary">Cancel</button>
+                <button id="btn-paste-confirm" class="btn-primary">Paste Anyway</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── About Dialog (modal) ─────────────────────────────── -->
+    <div id="about-dialog" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <span>About nterm-js</span>
+                <button class="modal-close" id="btn-about-close">&times;</button>
+            </div>
+            <div class="modal-body" style="text-align: center; padding: 24px 16px;">
+                <div style="font-size: 32px; font-weight: 300; color: var(--accent); margin-bottom: 4px;">
+                    nterm-js
+                </div>
+                <div id="about-version" style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+                    v0.0.0
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 12px 0;">
+                    An SSH terminal for network engineers made by a network engineer.
+                </p>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 16px 0;">
+                    Built for the people who keep the networks running.
+                </p>
+                <div style="
+                    border-top: 1px solid var(--border);
+                    padding-top: 14px;
+                    margin-top: 8px;
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                ">
+                    <div style="margin-bottom: 6px;">
+                        <strong style="color: var(--text-primary);">Scott Peterman</strong>
+                        <span style="color: var(--text-muted);">&mdash; Principal Infrastructure Engineer</span>
+                    </div>
+                    <a id="about-repo-link" href="#" style="
+                        color: var(--accent);
+                        text-decoration: none;
+                        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+                        font-size: 11px;
+                    ">github.com/scottpeterman/nterm-js</a>
+                </div>
+                <div id="about-runtime" style="
+                    margin-top: 14px;
+                    padding-top: 12px;
+                    border-top: 1px solid var(--border);
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+                    line-height: 1.6;
+                "></div>
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button id="btn-about-ok" class="btn-primary" style="min-width: 80px;">OK</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ─── Status Bar ───────────────────────────────────────── -->
     <div id="statusbar">
         <span id="status-message">Ready</span>
@@ -132,6 +218,7 @@
 <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
 <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
 
+    <script src="themes.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

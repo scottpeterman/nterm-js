@@ -1,10 +1,103 @@
-# nterm-electron
+# nterm-js
 
-Electron SSH terminal for network engineers. Pure JavaScript/TypeScript — no Python dependency.
+**A network-aware SSH terminal for network engineers.**
 
-Built from battle-tested components: the SSH layer is ported directly from the
-[Terminal Telemetry VS Code extension](https://marketplace.visualstudio.com/items?itemName=ScottPeterman.terminal-telemetry),
-with all auth logic, legacy device support, and exec channel fallback intact.
+Electron desktop app with multi-tab SSH, legacy device support, persistent settings, and session management. Pure JavaScript/TypeScript — no Python dependency.
+
+Built for the same job as [nterm](https://github.com/scottpeterman/nterm-qt) and [nterm-ng](https://github.com/scottpeterman/nterm-ng), but designed to ship as a native installer that anyone can double-click and run.
+
+[![nterm-js desktop — SSH terminal with session tree](screenshots/nterm1.gif)](screenshots/nterm1.gif)
+
+
+---
+
+## Why nterm-js
+
+Every SSH terminal written for network engineers assumes you have Python installed, a working venv, and the patience to debug pip dependency conflicts. That's fine for automation engineers. It's a wall for everyone else.
+
+nterm-js is a standalone desktop application. Download, install, connect. The SSH layer handles legacy Cisco, Juniper, and Arista gear out of the box — deprecated ciphers, keyboard-interactive auth, devices that reject shell requests. No configuration required.
+
+The terminal is xterm.js — the same engine that powers VS Code's integrated terminal. Full VT100/ANSI support, 256-color, Unicode, box-drawing characters. It renders htop, vim, and your worst Cisco config equally well.
+
+---
+
+## Features
+
+**SSH Terminal**
+- xterm.js rendering — full color, resize, configurable scrollback
+- Tab-per-session with connection status indicators (connecting / connected / error)
+- Dark and light themes (Catppuccin Mocha / Latte)
+- Multi-line paste warning with preview and confirmation
+- Configurable font size, font family, and cursor style
+
+**Authentication**
+- Password and keyboard-interactive (multi-language prompt detection)
+- SSH key file with passphrase support
+- SSH agent (Pageant on Windows, SSH_AUTH_SOCK on Linux/macOS)
+- Default key discovery (~/.ssh/id_rsa, id_ed25519, id_ecdsa, id_dsa)
+- Combined key + password authentication
+
+**Legacy Device Support**
+- RSA SHA-1 fallback for OpenSSH < 7.2 servers
+- Legacy KEX: diffie-hellman-group14-sha1, group1-sha1, group-exchange-sha1
+- Legacy ciphers: aes128-cbc, 3des-cbc
+- Shell → exec channel fallback for devices that reject shell requests
+- Retry-with-legacy-algorithms as a user action
+- Tested with Cisco IOS 12.2+, Junos 14.x+, Arista EOS, NX-OS
+
+**Session Management**
+- YAML/JSON session files with folder hierarchy
+- Auto-reload of last sessions file on launch
+- Session search and filter
+- Connection dialog with auth method selector
+- Native file browser for key selection
+- Compatible with nterm / TerminalTelemetry session format
+
+**Persistent Settings**
+- Window position and size restored on launch
+- Theme preference persisted across sessions
+- Sidebar width, terminal font, cursor style, scrollback depth
+- Default auth method and username
+- Paste warning threshold
+- Cross-platform storage (electron-store): `%APPDATA%` / `~/Library/Application Support` / `~/.config`
+
+**Distribution**
+- Cross-platform builds via electron-builder
+- Linux: AppImage
+- macOS: DMG (ARM64)
+- Windows: NSIS installer
+
+---
+
+## Screenshots
+
+| SSH Terminal | Connection Dialog |
+|---|---|
+| [![terminal](screenshots/htop.png)](screenshots/htop.png) | *(screenshot pending)* |
+
+---
+
+## Install
+
+### From Release
+
+Download the installer for your platform from [Releases](https://github.com/scottpeterman/nterm-js/releases):
+- **Linux**: `.AppImage`
+- **macOS**: `.dmg` (ARM64)
+- **Windows**: `.exe` installer
+
+### From Source
+
+```bash
+git clone https://github.com/scottpeterman/nterm-js.git
+cd nterm-js
+npm install
+npm start
+```
+
+Requires Node.js 20+ and npm.
+
+---
 
 ## Architecture
 
@@ -12,21 +105,20 @@ with all auth logic, legacy device support, and exec channel fallback intact.
 src/
 ├── main/
 │   ├── main.ts              # Electron main process — window lifecycle, IPC routing
-│   └── sshManager.ts        # SSH engine (ported from VS Code extension)
-│                             #   - ssh2 connections with full auth chain
-│                             #   - Shell → exec channel fallback
-│                             #   - Legacy cipher/KEX for old network gear
-│                             #   - Keyboard-interactive (multi-language)
-│                             #   - Key file, agent, password auth
-│                             #   - UUID-based session management
-│                             #   - Diagnostic output
-│
+│   ├── sshManager.ts        # SSH engine (ported from VS Code extension)
+│   │                        #   ssh2 connections · full auth chain
+│   │                        #   shell → exec fallback · legacy ciphers
+│   │                        #   keyboard-interactive · key/agent auth
+│   │                        #   UUID session management · diagnostics
+│   └── settings.ts          # Persistent settings (electron-store)
+│                             #   Schema-validated · cross-platform paths
+│                             #   Window bounds · theme · terminal prefs
 ├── preload/
 │   └── preload.ts            # Secure IPC bridge (window.nterm API)
 │
 └── renderer/
     ├── index.html            # Split layout: session tree + terminal tabs
-    ├── renderer.js           # Frontend logic: xterm.js, tabs, dialogs
+    ├── renderer.js           # xterm.js terminals, tab management, dialogs
     └── styles.css            # CSS variable theming (dark + light)
 ```
 
@@ -46,63 +138,24 @@ src/
                                     renderer (writes to xterm.js)
 ```
 
-SSHManager sends all data through a single `ssh:message` IPC channel using the
-same typed message protocol as the VS Code extension (output, connectionStatus,
-error, metadata, diagnostic). The renderer routes by sessionId.
+The SSH layer runs in the Electron main process. The renderer never touches Node.js or the network — it sends keystrokes through IPC and receives output through a single `ssh:message` channel. Context isolation is enforced.
 
-## Quick Start
+Settings are owned by the main process (`settings.ts`) and exposed to the renderer through IPC. The renderer reads settings on startup for theme, font, and layout preferences.
 
-```bash
-npm install
-npm start
-```
+### Origin
 
-This compiles TypeScript (`src/main/` and `src/preload/` → `dist/`) then launches Electron.
+The SSH engine was ported from the [Terminal Telemetry VS Code extension](https://marketplace.visualstudio.com/items?itemName=ScottPeterman.terminal-telemetry) with two changes:
 
-## Features
+1. `vscode.Webview.postMessage()` → `BrowserWindow.webContents.send()`
+2. VS Code logger → `electron-log`
 
-**SSH**
-- Password, key file, SSH agent, keyboard-interactive auth
-- Multi-language password prompt detection (English, Japanese, Chinese, Spanish)
-- Legacy cipher/KEX for older Cisco IOS, Junos, Arista EOS
-- Shell → exec channel fallback for devices that reject shell requests
-- Retry-with-legacy-algorithms as a user action
-- Auto-discovery of ~/.ssh/ keys (id_rsa, id_ed25519, id_ecdsa, id_dsa)
-- Per-session diagnostics
+All auth logic, legacy device handling, exec channel fallback, and diagnostic output carried over unchanged.
 
-**Terminal**
-- xterm.js with full VT100/ANSI support
-- Catppuccin Mocha (dark) and Catppuccin Latte (light) themes
-- Theme toggle updates all open terminals
-- Tab-per-session with status indicators (connecting/connected/error)
-- Proper resize handling (terminal → PTY)
-
-**Session Management**
-- YAML/JSON session files (compatible with nterm/TerminalTelemetry format)
-- Folder hierarchy with collapse/expand
-- Session search/filter
-- Connection dialog with auth method selector
-- Native file browser for key files
-- Double-click to connect (direct if credentials present, dialog if not)
-
-**UI**
-- Draggable splitter between session tree and terminal
-- Status bar with connection state and session count
-- Ctrl+N for new connection, Escape to close dialog
-- Dark/light theme via CSS variables
-
-## Connection Dialog Auth Methods
-
-| Method | Password | Key File | Agent | Notes |
-|--------|----------|----------|-------|-------|
-| Password | ✅ | — | — | Also enables keyboard-interactive |
-| Key File | — | ✅ | — | Browse button uses native OS dialog |
-| SSH Agent | — | — | ✅ | Pageant (Win) / SSH_AUTH_SOCK (Unix) |
-| Key + Password | ✅ | ✅ | — | For keys with passphrases + password auth |
-
-All methods include legacy mode toggle for older network devices.
+---
 
 ## Session File Format
+
+Compatible with nterm and TerminalTelemetry YAML:
 
 ```yaml
 - folder_name: Lab Switches
@@ -112,71 +165,145 @@ All methods include legacy mode toggle for older network devices.
       port: 22
       DeviceType: arista_eos
       username: admin
-      password: admin          # Optional — omit to prompt
+      password: admin
 
     - display_name: core-rtr-1
       host: 192.168.1.1
       port: 22
       DeviceType: cisco_ios
-      username: admin          # No password → opens connection dialog
+      username: admin
+      # No password — opens connection dialog on connect
 ```
 
-## Roadmap
+A Python conversion script is included for nterm-qt JSON exports:
 
-### Phase 1 — Credential Vault
-- [ ] AES-256 encrypted vault (Node.js crypto)
-- [ ] PBKDF2 key derivation (480K iterations)
-- [ ] Pattern-based credential matching by hostname
-- [ ] Vault manager UI
+```bash
+python tools/convert_sessions.py nterm_sessions.json -o sessions.yaml
+```
 
-### Phase 2 — Intelligence (all JS, no Python)
-- [ ] Sniffer pipeline (line accumulation → prompt detection → block extraction)
-- [ ] Gutter bar (amber marks alongside terminal)
-- [ ] tfsmjs integration (TextFSM parsing in JavaScript)
-- [ ] Visualizer (structured tables from parsed output)
-- [ ] Context menu (Copy Block, Export JSON/CSV/Markdown)
+---
 
-### Phase 3 — Telemetry
-- [ ] Right-pane telemetry dashboard
-- [ ] Per-device SSH polling via ssh2
-- [ ] Interface throughput charts (ECharts)
-- [ ] LLDP/CDP topology (SVG)
-- [ ] CPU/memory gauges
+## Settings
 
-### Phase 4 — Distribution
-- [ ] electron-builder packaging (Win/Mac/Linux)
-- [ ] Auto-update via electron-updater
-- [ ] Code signing
-- [ ] Installer branding
+Settings are stored in the OS-native config location and persist across sessions:
+
+| Setting | Default | Description |
+|---|---|---|
+| `theme` | `light` | `dark` or `light` |
+| `terminalFontSize` | `14` | Terminal font size (8–32) |
+| `terminalFontFamily` | Cascadia Code, Fira Code, Consolas | Terminal font stack |
+| `cursorStyle` | `block` | `block`, `underline`, or `bar` |
+| `cursorBlink` | `true` | Blinking cursor |
+| `scrollbackLines` | `10000` | Scrollback buffer depth (500–100,000) |
+| `sidebarWidth` | `220` | Session tree width in pixels |
+| `pasteWarningThreshold` | `1` | Line count that triggers paste confirmation |
+| `defaultUsername` | *(empty)* | Pre-filled username in connection dialog |
+| `defaultAuthMethod` | `password` | Default auth method in connection dialog |
+| `defaultLegacyMode` | `false` | Default legacy mode toggle |
+| `lastSessionsFile` | *(empty)* | Auto-loaded on next launch |
+| `windowBounds` | 1400×900 | Restored window position, size, maximized state |
+
+Settings file location:
+- **Windows**: `%APPDATA%/nterm-js/config.json`
+- **macOS**: `~/Library/Application Support/nterm-js/config.json`
+- **Linux**: `~/.config/nterm-js/config.json`
+
+---
 
 ## Development
 
 ```bash
-# Watch mode — recompiles TypeScript on save
-npm run watch
+# Build and run
+npm start
 
-# In another terminal, launch Electron
+# Watch mode (recompiles TypeScript on save)
+npm run watch
+# Then in another terminal:
 npx electron .
 
-# Build for distribution
-npm run build:win    # Windows NSIS installer
-npm run build:mac    # macOS DMG
-npm run build:linux  # AppImage + deb
+# Build distributables
+npm run build:win      # Windows NSIS installer
+npm run build:mac      # macOS DMG
+npm run build:linux    # AppImage + deb
 ```
 
-## Origin
+### Project Structure
 
-The SSH layer in this project was ported from the
-[Terminal Telemetry VS Code extension](https://marketplace.visualstudio.com/items?itemName=ScottPeterman.terminal-telemetry).
-All auth logic, legacy device support, exec channel fallback, and the UUID-based
-message protocol were preserved. The port involved two changes:
+TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer is plain HTML, CSS, and JavaScript — no framework, no build step, directly debuggable.
 
-1. `vscode.Webview.postMessage()` → `BrowserWindow.webContents.send()`
-2. VS Code logger → `electron-log`
+---
 
-Everything else — the battle-tested SSH handling for hundreds of real network
-devices — carried over unchanged.
+## Roadmap
+
+### Phase 1 — Terminal Features (current)
+
+- [x] Multi-tab SSH terminal with xterm.js
+- [x] Password, key file, SSH agent authentication
+- [x] Legacy cipher/KEX support for older network devices
+- [x] Shell → exec channel fallback
+- [x] YAML/JSON session files with folder hierarchy
+- [x] Connection dialog with auth method selector
+- [x] Dark / light theme toggle
+- [x] Session search and filter
+- [x] Persistent settings (window bounds, theme, terminal preferences)
+- [x] Auto-reload last sessions file on launch
+- [x] Multi-line paste warning with preview
+- [x] Cross-platform builds (AppImage, DMG, NSIS)
+- [ ] Credential vault (AES-256, PBKDF2, pattern matching)
+- [ ] Additional themes (Dracula, Nord, Gruvbox, Solarized, hybrid)
+- [ ] Auto-reconnect with exponential backoff
+- [ ] Session logging (ANSI-stripped capture to file)
+- [ ] Session editor (add/edit/delete/reorder)
+
+### Phase 2 — Intelligence
+
+- [ ] Sniffer pipeline (line accumulation → prompt detection → block extraction)
+- [ ] Gutter bar (CRT amber marks alongside terminal)
+- [ ] [tfsmjs](https://github.com/scottpeterman/tfsmjs) integration (TextFSM parsing in JavaScript)
+- [ ] Visualizer (structured tables from parsed output)
+- [ ] Context menu (Copy Block, Export JSON/CSV/Markdown)
+
+### Phase 3 — Distribution Polish
+
+- [x] electron-builder packaging (Linux, macOS)
+- [ ] Windows build testing
+- [ ] Auto-update via electron-updater
+- [ ] Code signing
+- [ ] Installer branding
+- [ ] GitHub Releases with platform binaries
+
+---
+
+## Ecosystem
+
+nterm-js is the distributable terminal for a network management workflow. Telemetry and real-time device monitoring are handled by a separate companion application.
+
+| Phase | Tool | Function |
+|---|---|---|
+| **Day 0** | [Secure Cartography](https://github.com/scottpeterman/secure_cartography) | Network discovery, topology mapping |
+| **Day 1** | [VelocityCMDB](https://github.com/scottpeterman/velocitycmdb) | Device inventory, configuration management |
+| **Day 2** | **nterm-js** | Operational terminal, real-time interaction |
+| **Day 2** | Day 2 validation tools | fibtrace, trafikwatch, BGP validation |
+
+When ecosystem tools are available, nterm-js session files can be generated from the CMDB. When they're not, nterm-js operates independently.
+
+### Related Projects
+
+- [nterm](https://github.com/scottpeterman/nterm-qt) — PyQt6 SSH terminal widget with scripting API
+- [nterm-ng](https://github.com/scottpeterman/nterm-ng) — Network-aware SSH terminal with sniffer and telemetry (Python)
+- [Terminal Telemetry](https://marketplace.visualstudio.com/items?itemName=ScottPeterman.terminal-telemetry) — VS Code SSH extension (origin of the SSH engine)
+- [tfsmjs](https://github.com/scottpeterman/tfsmjs) — TextFSM JavaScript port (92% template compatibility)
+- [SSHWontDie](https://github.com/scottpeterman/sshwontdie) — Multi-language SSH automation toolkit (origin of sshjs telemetry client)
+
+---
 
 ## License
 
 GPL-3.0
+
+---
+
+## Author
+
+**Scott Peterman** — Principal Infrastructure Engineer
+[github.com/scottpeterman](https://github.com/scottpeterman)
