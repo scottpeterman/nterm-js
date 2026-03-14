@@ -26,7 +26,7 @@ let mainWindow: BrowserWindow | null = null;
 
 // ─── Logging ─────────────────────────────────────────────────
 log.transports.file.level = 'info';
-log.transports.console.level = 'debug';
+log.transports.console.level = app.isPackaged ? false : 'debug';
 
 // ─── Window ──────────────────────────────────────────────────
 function createWindow(): void {
@@ -148,8 +148,8 @@ function buildMenu(): void {
         {
             label: 'Edit',
             submenu: [
-                { label: 'Copy', accelerator: 'CmdOrCtrl+Shift+C', role: 'copy' as const },
-                { label: 'Paste', accelerator: 'CmdOrCtrl+Shift+V', role: 'paste' as const },
+                { label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' as const },
+                { label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' as const },
                 { type: 'separator' },
                 { label: 'Select All', accelerator: 'CmdOrCtrl+A', role: 'selectAll' as const },
             ],
