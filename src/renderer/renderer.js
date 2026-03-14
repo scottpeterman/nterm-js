@@ -1,18 +1,77 @@
 // renderer.js — Frontend logic
-// Owns: xterm.js terminals, tab management, session tree, connection dialog
+// Owns: xterm.js terminals, tab management, session tree, connection dialog, session capture
 // Talks to main process through window.nterm (preload bridge)
 // Receives SSHManager messages through window.nterm.onMessage()
 
 (() => {
     'use strict';
 
-    console.log('[nterm renderer] loaded — v5 persistent settings');
+    console.log('[nterm renderer] loaded — v6 session capture');
+
+    // ─── ANSI Stripper ──────────────────────────────────────
+    // Strips escape sequences from terminal output for session
+    // capture. Handles partial sequences split across chunks
+    // (common with slow network gear connections).
+
+    const _CSI_RE         = /\x1b\[[?!>]*[0-9;]*[A-Za-z@`]/g;
+    const _OSC_RE         = /\x1b\].*?(?:\x1b\\|\x07)/g;
+    const _CHARSET_RE     = /\x1b[()][A-B012]/g;
+    const _SIMPLE_RE      = /\x1b[=>78DEHM]/g;
+    const _CTRL_RE        = /[\x00-\x06\x0e\x0f\x11-\x1a\x1c-\x1f]/g;
+    const _BEL_RE         = /\x07/g;
+    const _BS_RE          = /\x08/g;
+    const _TRAILING_ESC_RE = /\x1b\[?[?!>]*[0-9;]*$/;
+
+    class AnsiStripper {
+        constructor() {
+            this._partial = '';
+        }
+
+        strip(data) {
+            let text = this._partial + data;
+            this._partial = '';
+
+            const trailingMatch = text.match(_TRAILING_ESC_RE);
+            if (trailingMatch) {
+                this._partial = trailingMatch[0];
+                text = text.slice(0, -this._partial.length);
+            }
+
+            text = text.replace(_OSC_RE, '');
+            text = text.replace(_CSI_RE, '');
+            text = text.replace(_CHARSET_RE, '');
+            text = text.replace(_SIMPLE_RE, '');
+            text = text.replace(_BEL_RE, '');
+            text = text.replace(_BS_RE, '');
+            text = text.replace(_CTRL_RE, '');
+
+            return text;
+        }
+
+        flush() {
+            const remaining = this._partial;
+            this._partial = '';
+            if (remaining.length <= 2) return '';
+            return remaining.replace(_CSI_RE, '')
+                            .replace(_OSC_RE, '')
+                            .replace(_CHARSET_RE, '')
+                            .replace(_SIMPLE_RE, '')
+                            .replace(_CTRL_RE, '');
+        }
+
+        reset() {
+            this._partial = '';
+        }
+    }
 
     // ─── State ───────────────────────────────────────────────
     const terminals = new Map();  // sessionId → { term, fitAddon, element, tab, label, status }
     let activeSessionId = null;
     let sessionData = null;
     let settings = null;  // hydrated from electron-store on startup
+
+    // Per-session capture state (separate from terminals Map)
+    const captureState = new Map();  // sessionId → { active, filePath, stripper }
 
     // ─── Last-Used Credentials ───────────────────────────────
     // Populated from persisted settings, updated in-memory,
@@ -46,6 +105,14 @@
     const rowPassword    = document.getElementById('row-password');
     const rowKeyfile     = document.getElementById('row-keyfile');
     const rowPassphrase  = document.getElementById('row-passphrase');
+
+    // Context menu refs
+    const contextMenu    = document.getElementById('context-menu');
+    const ctxCopy        = document.getElementById('ctx-copy');
+    const ctxPaste       = document.getElementById('ctx-paste');
+    const ctxCapture     = document.getElementById('ctx-capture');
+    const ctxCaptureText = document.getElementById('ctx-capture-text');
+    const ctxClear       = document.getElementById('ctx-clear');
 
     // ─── Settings: Load & Apply ──────────────────────────────
     // Called once on startup before anything renders.
@@ -525,6 +592,17 @@
         const session = terminals.get(sessionId);
         if (!session) return;
 
+        // Stop capture if active (flush buffer before disconnect)
+        const capState = captureState.get(sessionId);
+        if (capState?.active) {
+            const remaining = capState.stripper.flush();
+            if (remaining) {
+                window.nterm.captureWrite(sessionId, remaining);
+            }
+            window.nterm.captureStop(sessionId);
+            captureState.delete(sessionId);
+        }
+
         window.nterm.disconnect(sessionId);
         session.term.dispose();
         session.element.remove();
@@ -551,7 +629,17 @@
         switch (type) {
             case 'output':
                 if (payload?.data) {
+                    // Write raw data to terminal (unchanged)
                     session.term.write(payload.data);
+
+                    // Tap: if capture is active, strip ANSI and send to main
+                    const cap = captureState.get(sessionId);
+                    if (cap?.active) {
+                        const stripped = cap.stripper.strip(payload.data);
+                        if (stripped) {
+                            window.nterm.captureWrite(sessionId, stripped);
+                        }
+                    }
                 }
                 break;
 
@@ -586,6 +674,11 @@
         const dot = session.tab.querySelector('.tab-status');
         if (dot) {
             dot.className = `tab-status ${status}`;
+            // Preserve capturing indicator if active
+            const capState = captureState.get(sessionId);
+            if (capState?.active) {
+                dot.classList.add('capturing');
+            }
         }
     }
 
@@ -625,6 +718,192 @@
             // Persist sidebar width
             const width = parseInt(sidebar.style.width) || 220;
             window.nterm.setSetting('sidebarWidth', width);
+        }
+    });
+
+    // ─── Context Menu ───────────────────────────────────────
+
+    // Track which session the context menu was opened for
+    let contextMenuSessionId = null;
+
+    // Show context menu on right-click in terminal area
+    termContainer.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+
+        if (!activeSessionId) return;
+        contextMenuSessionId = activeSessionId;
+
+        const session = terminals.get(activeSessionId);
+        if (!session) return;
+
+        // Update copy state
+        if (session.term.hasSelection()) {
+            ctxCopy.classList.remove('disabled');
+        } else {
+            ctxCopy.classList.add('disabled');
+        }
+
+        // Update capture label
+        const capState = captureState.get(activeSessionId);
+        if (capState?.active) {
+            const fileName = capState.filePath.split(/[\\/]/).pop();
+            ctxCaptureText.textContent = `Stop Capture (${fileName})`;
+        } else {
+            ctxCaptureText.textContent = 'Start Capture...';
+        }
+
+        // Position — keep menu on screen
+        const x = Math.min(e.clientX, window.innerWidth - 200);
+        const y = Math.min(e.clientY, window.innerHeight - 160);
+        contextMenu.style.left = `${x}px`;
+        contextMenu.style.top = `${y}px`;
+        contextMenu.style.display = 'block';
+    });
+
+    // Hide on click outside
+    document.addEventListener('click', (e) => {
+        if (!contextMenu.contains(e.target)) {
+            contextMenu.style.display = 'none';
+        }
+    });
+
+    // Hide on Escape (also hides connect dialog — existing behavior preserved)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            contextMenu.style.display = 'none';
+        }
+    });
+
+    // Context Menu: Copy
+    ctxCopy.addEventListener('click', () => {
+        contextMenu.style.display = 'none';
+        const session = terminals.get(contextMenuSessionId);
+        if (session?.term.hasSelection()) {
+            navigator.clipboard.writeText(session.term.getSelection());
+            session.term.clearSelection();
+        }
+    });
+
+    // Context Menu: Paste
+    ctxPaste.addEventListener('click', async () => {
+        contextMenu.style.display = 'none';
+        if (!contextMenuSessionId) return;
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                checkAndSendPaste(contextMenuSessionId, text);
+            }
+        } catch (err) {
+            console.warn('[nterm] Clipboard read failed:', err);
+        }
+    });
+
+    // Context Menu: Clear Terminal
+    ctxClear.addEventListener('click', () => {
+        contextMenu.style.display = 'none';
+        const session = terminals.get(contextMenuSessionId);
+        if (session) {
+            session.term.clear();
+        }
+    });
+
+    // Context Menu: Capture Toggle
+    ctxCapture.addEventListener('click', async () => {
+        contextMenu.style.display = 'none';
+        if (!contextMenuSessionId) return;
+
+        const capState = captureState.get(contextMenuSessionId);
+
+        if (capState?.active) {
+            await stopCapture(contextMenuSessionId);
+        } else {
+            await startCapture(contextMenuSessionId);
+        }
+    });
+
+    // ─── Session Capture ────────────────────────────────────
+
+    async function startCapture(sessionId) {
+        const session = terminals.get(sessionId);
+        if (!session) return;
+
+        // Build default filename: label_YYYYMMDD_HHMMSS.log
+        const now = new Date();
+        const ts = now.toISOString().replace(/[:\-T]/g, '').slice(0, 15);
+        const safeName = session.label.replace(/[^a-zA-Z0-9@._-]/g, '_');
+        const defaultName = `${safeName}_${ts}.log`;
+
+        // Ask main process to show save dialog
+        const filePath = await window.nterm.captureSelectFile(defaultName);
+        if (!filePath) return;  // user cancelled
+
+        // Tell main to open the file handle
+        const result = await window.nterm.captureStart(sessionId, filePath);
+        if (result?.error) {
+            setStatus(`Capture error: ${result.error}`);
+            return;
+        }
+
+        // Create ANSI stripper for this session
+        const stripper = new AnsiStripper();
+
+        captureState.set(sessionId, {
+            active: true,
+            filePath,
+            stripper,
+        });
+
+        // Visual indicator: add capturing class to tab dot
+        updateCaptureIndicator(sessionId, true);
+
+        const fileName = filePath.split(/[\\/]/).pop();
+        setStatus(`Capturing: ${session.label} → ${fileName}`);
+    }
+
+    async function stopCapture(sessionId) {
+        const capState = captureState.get(sessionId);
+        if (!capState?.active) return;
+
+        // Flush any buffered partial ANSI sequence
+        const remaining = capState.stripper.flush();
+        if (remaining) {
+            window.nterm.captureWrite(sessionId, remaining);
+        }
+
+        // Tell main to close the file handle
+        await window.nterm.captureStop(sessionId);
+
+        captureState.delete(sessionId);
+
+        // Remove visual indicator
+        updateCaptureIndicator(sessionId, false);
+
+        setStatus('Capture stopped');
+    }
+
+    function updateCaptureIndicator(sessionId, isCapturing) {
+        const session = terminals.get(sessionId);
+        if (!session) return;
+
+        const dot = session.tab.querySelector('.tab-status');
+        if (!dot) return;
+
+        if (isCapturing) {
+            dot.classList.add('capturing');
+        } else {
+            dot.classList.remove('capturing');
+        }
+    }
+
+    // Handle capture errors from main process (disk full, etc.)
+    window.nterm.onCaptureError((msg) => {
+        const { sessionId, error } = msg;
+        const capState = captureState.get(sessionId);
+        if (capState) {
+            capState.stripper.reset();
+            captureState.delete(sessionId);
+            updateCaptureIndicator(sessionId, false);
+            setStatus(`Capture failed: ${error}`);
         }
     });
 

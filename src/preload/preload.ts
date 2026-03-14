@@ -65,6 +65,19 @@ contextBridge.exposeInMainWorld('nterm', {
     selectKeyFile: () =>
         ipcRenderer.invoke('dialog:select-keyfile'),
 
+    // ─── Session Capture ─────────────────────────────────────
+    captureSelectFile: (defaultName: string) =>
+        ipcRenderer.invoke('capture:select-file', { defaultName }),
+
+    captureStart: (sessionId: string, filePath: string) =>
+        ipcRenderer.invoke('capture:start', { sessionId, filePath }),
+
+    captureWrite: (sessionId: string, data: string) =>
+        ipcRenderer.send('capture:write', { sessionId, data }),
+
+    captureStop: (sessionId: string) =>
+        ipcRenderer.invoke('capture:stop', { sessionId }),
+
     // ─── DevTools ────────────────────────────────────────────
     openDevTools: () =>
         ipcRenderer.invoke('devtools:open'),
@@ -84,5 +97,10 @@ contextBridge.exposeInMainWorld('nterm', {
 
     onMenuLoadSessions: (callback: () => void) => {
         ipcRenderer.on('menu:load-sessions', () => callback());
+    },
+
+    // ─── Capture Events (from main process → renderer) ──────
+    onCaptureError: (callback: (message: any) => void) => {
+        ipcRenderer.on('capture:error', (_event, message) => callback(message));
     },
 });

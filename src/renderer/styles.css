@@ -435,6 +435,58 @@ select {
     color: var(--text-muted);
 }
 
+/* ─── Context Menu ──────────────────────────────────────────── */
+/* Append to end of styles.css                                  */
+
+.context-menu {
+    position: fixed;
+    z-index: 9999;
+    background: var(--bg-secondary, #313244);
+    border: 1px solid var(--border, #45475a);
+    border-radius: 6px;
+    padding: 4px 0;
+    min-width: 180px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    font-size: 13px;
+    color: var(--text-primary, #cdd6f4);
+}
+
+.ctx-item {
+    padding: 6px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.ctx-item:hover {
+    background: var(--accent, #89b4fa);
+    color: var(--bg-primary, #1e1e2e);
+}
+
+.ctx-item.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.ctx-separator {
+    height: 1px;
+    background: var(--border, #45475a);
+    margin: 4px 0;
+}
+
+/* ─── Capture Indicator (tab dot) ──────────────────────────── */
+
+.tab-status.capturing {
+    background: #f38ba8;
+    animation: capture-pulse 2s ease-in-out infinite;
+}
+
+@keyframes capture-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
 /* ─── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

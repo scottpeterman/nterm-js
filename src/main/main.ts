@@ -22,6 +22,11 @@ import {
 // ─── Session Registry ────────────────────────────────────────
 const sessions = new Map<string, SSHManager>();
 
+// ─── Capture File Handle Registry ────────────────────────────
+// Tracks open file descriptors for active session captures.
+// Key: sessionId, Value: { fd, filePath }
+const captureHandles = new Map<string, { fd: number; filePath: string }>();
+
 let mainWindow: BrowserWindow | null = null;
 
 // ─── Logging ─────────────────────────────────────────────────
@@ -107,6 +112,12 @@ function createWindow(): void {
     mainWindow.on('unmaximize', saveWindowBounds);
 
     mainWindow.on('closed', () => {
+        // Close all active capture file handles
+        for (const [id, handle] of captureHandles) {
+            try { fs.closeSync(handle.fd); } catch (e) { /* ignore */ }
+        }
+        captureHandles.clear();
+
         for (const [id, manager] of sessions) {
             manager.disconnect();
         }
@@ -436,4 +447,92 @@ ipcMain.handle('app:version-info', async () => {
         nodeVersion: process.versions.node,
         platform: `${process.platform} ${process.arch}`,
     };
+});
+
+// ─── IPC: Session Capture ───────────────────────────────────
+
+// Capture — Select File (native save dialog)
+ipcMain.handle('capture:select-file', async (event, { defaultName }: { defaultName: string }) => {
+    if (!mainWindow) return null;
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save Session Capture',
+        defaultPath: defaultName,
+        filters: [
+            { name: 'Log Files', extensions: ['log', 'txt'] },
+            { name: 'All Files', extensions: ['*'] },
+        ],
+    });
+
+    if (result.canceled || !result.filePath) return null;
+    return result.filePath;
+});
+
+// Capture — Start (open file handle, write header)
+ipcMain.handle('capture:start', async (event, { sessionId, filePath }: { sessionId: string; filePath: string }) => {
+    // Close any existing capture for this session
+    const existing = captureHandles.get(sessionId);
+    if (existing) {
+        try { fs.closeSync(existing.fd); } catch (e) { /* ignore */ }
+        captureHandles.delete(sessionId);
+    }
+
+    try {
+        // Open for append — creates file if it doesn't exist
+        const fd = fs.openSync(filePath, 'a');
+
+        // Write header
+        const timestamp = new Date().toISOString();
+        const header = `\n=== Session capture started: ${timestamp} ===\n\n`;
+        fs.writeSync(fd, header);
+
+        captureHandles.set(sessionId, { fd, filePath });
+        log.info(`Capture started: ${sessionId} → ${filePath}`);
+        return { success: true, filePath };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        log.error(`Failed to start capture: ${msg}`);
+        return { error: msg };
+    }
+});
+
+// Capture — Write (fire-and-forget, uses .on not .handle)
+ipcMain.on('capture:write', (event, { sessionId, data }: { sessionId: string; data: string }) => {
+    const handle = captureHandles.get(sessionId);
+    if (!handle) return;
+
+    try {
+        fs.writeSync(handle.fd, data);
+    } catch (err) {
+        // If write fails (disk full, etc.), stop the capture
+        log.error(`Capture write failed for ${sessionId}: ${err}`);
+        try { fs.closeSync(handle.fd); } catch (e) { /* ignore */ }
+        captureHandles.delete(sessionId);
+        // Notify renderer that capture died
+        if (mainWindow) {
+            mainWindow.webContents.send('capture:error', { sessionId, error: 'Write failed' });
+        }
+    }
+});
+
+// Capture — Stop (write footer, close file handle)
+ipcMain.handle('capture:stop', async (event, { sessionId }: { sessionId: string }) => {
+    const handle = captureHandles.get(sessionId);
+    if (!handle) return { success: true };
+
+    try {
+        // Write footer
+        const timestamp = new Date().toISOString();
+        const footer = `\n\n=== Session capture stopped: ${timestamp} ===\n`;
+        fs.writeSync(handle.fd, footer);
+
+        fs.closeSync(handle.fd);
+        captureHandles.delete(sessionId);
+        log.info(`Capture stopped: ${sessionId}`);
+        return { success: true };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        captureHandles.delete(sessionId);
+        return { error: msg };
+    }
 });

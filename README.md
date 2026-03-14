@@ -26,9 +26,18 @@ The terminal is xterm.js — the same engine that powers VS Code's integrated te
 **SSH Terminal**
 - xterm.js rendering — full color, resize, configurable scrollback
 - Tab-per-session with connection status indicators (connecting / connected / error)
-- Dark and light themes (Catppuccin Mocha / Latte)
+- 10 themes across dark and light variants (Catppuccin, Corporate, Darcula, Nord, Gruvbox, Solarized)
 - Multi-line paste warning with preview and confirmation
 - Configurable font size, font family, and cursor style
+- Right-click context menu (Copy, Paste, Clear Terminal, Start/Stop Capture)
+
+**Session Capture**
+- ANSI-stripped session logging to file
+- Per-session capture with start/stop toggle via context menu
+- Native save dialog with auto-generated filenames (label + timestamp)
+- Partial escape sequence buffering for clean output from slow connections
+- Visual capture indicator (pulsing tab dot) while recording
+- Automatic capture cleanup on tab close and window close
 
 **Authentication**
 - Password and keyboard-interactive (multi-language prompt detection)
@@ -71,9 +80,9 @@ The terminal is xterm.js — the same engine that powers VS Code's integrated te
 
 ## Screenshots
 
-| SSH Terminal | Connection Dialog |
-|---|---|
-| [![terminal](screenshots/htop.png)](screenshots/htop.png) | *(screenshot pending)* |
+| Corporate (dark) | Catppuccin Mocha | Solarized Light | Gruvbox Dark |
+|---|---|---|---|
+| [![corporate](screenshots/corporate.png)](screenshots/corporate.png) | [![mocha](screenshots/mocha.png)](screenshots/mocha.png) | [![solarized](screenshots/solarized-light.png)](screenshots/solarized-light.png) | [![gruvbox](screenshots/gruvbox-dark.png)](screenshots/gruvbox-dark.png) |
 
 ---
 
@@ -105,6 +114,7 @@ Requires Node.js 20+ and npm.
 src/
 ├── main/
 │   ├── main.ts              # Electron main process — window lifecycle, IPC routing
+│   │                        #   Session capture file I/O (open, write, close)
 │   ├── sshManager.ts        # SSH engine (ported from VS Code extension)
 │   │                        #   ssh2 connections · full auth chain
 │   │                        #   shell → exec fallback · legacy ciphers
@@ -119,7 +129,9 @@ src/
 └── renderer/
     ├── index.html            # Split layout: session tree + terminal tabs
     ├── renderer.js           # xterm.js terminals, tab management, dialogs
-    └── styles.css            # CSS variable theming (dark + light)
+    │                         #   ANSI stripper · session capture · context menu
+    ├── themes.js             # Theme definitions (10 themes, dark + light)
+    └── styles.css            # CSS variable theming
 ```
 
 ### Data Flow
@@ -136,9 +148,23 @@ src/
                                               │
                                               ▼
                                     renderer (writes to xterm.js)
+                                              │
+                                    ┌─────────┴─────────┐
+                                    │                   │
+                                    ▼                   ▼
+                              term.write(raw)    AnsiStripper.strip()
+                              (display)                 │
+                                                        ▼
+                                                  capture:write IPC
+                                                        │
+                                                        ▼
+                                                  main: fs.writeSync()
+                                                  (append to log file)
 ```
 
 The SSH layer runs in the Electron main process. The renderer never touches Node.js or the network — it sends keystrokes through IPC and receives output through a single `ssh:message` channel. Context isolation is enforced.
+
+Session capture taps the output stream in the renderer, strips ANSI escape sequences, and sends cleaned text to the main process for file I/O. The capture path is completely separate from the SSH path — sshManager is never touched.
 
 Settings are owned by the main process (`settings.ts`) and exposed to the renderer through IPC. The renderer reads settings on startup for theme, font, and layout preferences.
 
@@ -150,6 +176,23 @@ The SSH engine was ported from the [Terminal Telemetry VS Code extension](https:
 2. VS Code logger → `electron-log`
 
 All auth logic, legacy device handling, exec channel fallback, and diagnostic output carried over unchanged.
+
+---
+
+## Themes
+
+nterm-js ships with 10 themes organized into dark and light groups:
+
+| Dark | Light |
+|---|---|
+| Catppuccin Mocha | Catppuccin Latte |
+| Corporate Dark | Corporate |
+| Darcula | Solarized Light |
+| Nord | Gruvbox Light |
+| Gruvbox Dark | |
+| Solarized Dark | |
+
+Themes are selectable from the dropdown in the top bar. The selection persists across sessions. All UI elements — sidebar, tabs, dialogs, context menu, status bar — adapt to the active theme via CSS variables.
 
 ---
 
@@ -189,7 +232,7 @@ Settings are stored in the OS-native config location and persist across sessions
 
 | Setting | Default | Description |
 |---|---|---|
-| `theme` | `light` | `dark` or `light` |
+| `theme` | `catppuccin-mocha` | Named theme (see Themes section) |
 | `terminalFontSize` | `14` | Terminal font size (8–32) |
 | `terminalFontFamily` | Cascadia Code, Fira Code, Consolas | Terminal font stack |
 | `cursorStyle` | `block` | `block`, `underline`, or `bar` |
@@ -243,16 +286,16 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 - [x] Shell → exec channel fallback
 - [x] YAML/JSON session files with folder hierarchy
 - [x] Connection dialog with auth method selector
-- [x] Dark / light theme toggle
 - [x] Session search and filter
 - [x] Persistent settings (window bounds, theme, terminal preferences)
 - [x] Auto-reload last sessions file on launch
 - [x] Multi-line paste warning with preview
 - [x] Cross-platform builds (AppImage, DMG, NSIS)
+- [x] 10 themes — dark and light (Catppuccin, Corporate, Darcula, Nord, Gruvbox, Solarized)
+- [x] Session logging (ANSI-stripped capture to file with context menu toggle)
+- [x] Right-click context menu (Copy, Paste, Capture, Clear)
 - [ ] Credential vault (AES-256, PBKDF2, pattern matching)
-- [ ] Additional themes (Dracula, Nord, Gruvbox, Solarized, hybrid)
 - [ ] Auto-reconnect with exponential backoff
-- [ ] Session logging (ANSI-stripped capture to file)
 - [ ] Session editor (add/edit/delete/reorder)
 
 ### Phase 2 — Intelligence
@@ -261,7 +304,7 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 - [ ] Gutter bar (CRT amber marks alongside terminal)
 - [ ] [tfsmjs](https://github.com/scottpeterman/tfsmjs) integration (TextFSM parsing in JavaScript)
 - [ ] Visualizer (structured tables from parsed output)
-- [ ] Context menu (Copy Block, Export JSON/CSV/Markdown)
+- [ ] Context menu extensions (Copy Block, Export JSON/CSV/Markdown)
 
 ### Phase 3 — Distribution Polish
 
