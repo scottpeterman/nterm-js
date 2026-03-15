@@ -487,6 +487,59 @@ select {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.4; }
 }
+/* ─── Vault Styles ─────────────────────────────────────────── */
+/* Append to end of styles.css                                  */
+
+/* Vault indicator in status bar */
+#vault-indicator {
+    font-size: 13px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+#vault-indicator:hover { opacity: 1; }
+
+/* Credential table */
+#vault-cred-table th {
+    background: var(--bg-overlay);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 2px solid var(--accent);
+}
+
+#vault-cred-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+#vault-cred-table tbody tr {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+#vault-cred-table tbody tr:hover {
+    background: var(--bg-overlay);
+}
+
+#vault-cred-table tbody tr.selected {
+    background: var(--accent);
+    color: var(--bg-base);
+}
+
+#vault-cred-table tbody tr.selected td {
+    color: var(--bg-base);
+}
+
+/* Editor textarea focus */
+#ved-sshkey:focus {
+    border-color: var(--accent);
+}
 /* ─── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

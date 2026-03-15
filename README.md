@@ -46,6 +46,20 @@ The terminal is xterm.js — the same engine that powers VS Code's integrated te
 - Default key discovery (~/.ssh/id_rsa, id_ed25519, id_ecdsa, id_dsa)
 - Combined key + password authentication
 
+**Credential Vault**
+- AES-256-GCM encrypted credential storage (SQLite + Node.js crypto)
+- PBKDF2-HMAC-SHA256 key derivation (480,000 iterations)
+- Master password with verification token (password never stored)
+- System keychain integration for auto-unlock (macOS Keychain, Windows DPAPI, Linux libsecret)
+- Full CRUD credential manager UI with add/edit/delete
+- Host pattern matching with glob wildcards (`10.0.*`, `*.lab.example.com`)
+- Tag-based matching with score-weighted resolution
+- Default credential fallback
+- Jump host configuration per credential (forward-compatible)
+- Connect dialog integration — "Vault Credential" auth method with dropdown
+- Secrets never cross IPC — credentials resolved server-side before SSH connection
+- Master password change with automatic re-encryption of all credentials
+
 **Legacy Device Support**
 - RSA SHA-1 fallback for OpenSSH < 7.2 servers
 - Legacy KEX: diffie-hellman-group14-sha1, group1-sha1, group-exchange-sha1
@@ -101,10 +115,11 @@ Download the installer for your platform from [Releases](https://github.com/scot
 git clone https://github.com/scottpeterman/nterm-js.git
 cd nterm-js
 npm install
+npx @electron/rebuild -f -w better-sqlite3
 npm start
 ```
 
-Requires Node.js 20+ and npm.
+Requires Node.js 20+ and npm. The `@electron/rebuild` step compiles `better-sqlite3` against Electron's Node.js headers (required for the credential vault).
 
 ---
 
@@ -115,14 +130,22 @@ src/
 ├── main/
 │   ├── main.ts              # Electron main process — window lifecycle, IPC routing
 │   │                        #   Session capture file I/O (open, write, close)
+│   │                        #   Vault IPC registration · credential injection
 │   ├── sshManager.ts        # SSH engine (ported from VS Code extension)
 │   │                        #   ssh2 connections · full auth chain
 │   │                        #   shell → exec fallback · legacy ciphers
 │   │                        #   keyboard-interactive · key/agent auth
 │   │                        #   UUID session management · diagnostics
-│   └── settings.ts          # Persistent settings (electron-store)
-│                             #   Schema-validated · cross-platform paths
-│                             #   Window bounds · theme · terminal prefs
+│   ├── settings.ts          # Persistent settings (electron-store)
+│   │                        #   Schema-validated · cross-platform paths
+│   │                        #   Window bounds · theme · terminal prefs
+│   ├── vaultCrypto.ts       # Encryption primitives (AES-256-GCM, PBKDF2)
+│   ├── vaultStore.ts        # Credential storage (SQLite + encrypted fields)
+│   │                        #   init/unlock/lock lifecycle · CRUD operations
+│   │                        #   Master password change with re-encryption
+│   ├── vaultKeychain.ts     # System keychain integration (Electron safeStorage)
+│   ├── vaultResolver.ts     # Credential matching (glob patterns, tag scoring)
+│   └── vaultIpc.ts          # Vault IPC handlers · connect-time credential injection
 ├── preload/
 │   └── preload.ts            # Secure IPC bridge (window.nterm API)
 │
@@ -130,6 +153,8 @@ src/
     ├── index.html            # Split layout: session tree + terminal tabs
     ├── renderer.js           # xterm.js terminals, tab management, dialogs
     │                         #   ANSI stripper · session capture · context menu
+    ├── vault-ui.js           # Vault UI — unlock, credential manager, editor
+    │                         #   Status indicator · connect dialog integration
     ├── themes.js             # Theme definitions (10 themes, dark + light)
     └── styles.css            # CSS variable theming
 ```
@@ -167,6 +192,41 @@ The SSH layer runs in the Electron main process. The renderer never touches Node
 Session capture taps the output stream in the renderer, strips ANSI escape sequences, and sends cleaned text to the main process for file I/O. The capture path is completely separate from the SSH path — sshManager is never touched.
 
 Settings are owned by the main process (`settings.ts`) and exposed to the renderer through IPC. The renderer reads settings on startup for theme, font, and layout preferences.
+
+### Credential Vault
+
+```
+                        ┌──────────────────────────────────────┐
+                        │        Renderer (vault-ui.js)        │
+                        │  Unlock dialog · Credential manager  │
+                        │  Connect dialog "Vault Credential"   │
+                        └──────────────┬───────────────────────┘
+                                       │ IPC (metadata only — no secrets)
+                        ┌──────────────▼───────────────────────┐
+                        │         Main Process (vaultIpc.ts)    │
+                        │  enrichSshConfig() at connect time    │
+                        ├───────────────────────────────────────┤
+                        │  vaultResolver.ts  — glob matching    │
+                        │  vaultStore.ts     — SQLite CRUD      │
+                        │  vaultCrypto.ts    — AES-256-GCM      │
+                        │  vaultKeychain.ts  — OS keychain      │
+                        └───────────────────────────────────────┘
+                                       │
+                        ┌──────────────▼───────────────────────┐
+                        │         vault.db (SQLite)             │
+                        │  vault_meta: salt, verify token       │
+                        │  credentials: encrypted blobs         │
+                        └───────────────────────────────────────┘
+```
+
+Secrets never cross the IPC boundary. The renderer sends a credential name; the main process resolves the actual password or SSH key from the encrypted vault and injects it into the SSH config before `sshManager.connectToHost()` executes. The connect dialog shows credential metadata (name, username, auth type) but never handles decrypted secrets.
+
+The master password derives an AES-256 key via PBKDF2 (480,000 iterations). The key is held in memory only while unlocked and cleared on lock or window close. The optional system keychain caches the master password (not the derived key) for auto-unlock on next launch.
+
+Vault storage location:
+- **Windows**: `%APPDATA%/nterm-js/vault.db`
+- **macOS**: `~/Library/Application Support/nterm-js/vault.db`
+- **Linux**: `~/.config/nterm-js/vault.db`
 
 ### Origin
 
@@ -245,6 +305,7 @@ Settings are stored in the OS-native config location and persist across sessions
 | `defaultLegacyMode` | `false` | Default legacy mode toggle |
 | `lastSessionsFile` | *(empty)* | Auto-loaded on next launch |
 | `windowBounds` | 1400×900 | Restored window position, size, maximized state |
+| `vault.autoUnlock` | `true` | Auto-unlock vault from system keychain on launch |
 
 Settings file location:
 - **Windows**: `%APPDATA%/nterm-js/config.json`
@@ -294,7 +355,7 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 - [x] 10 themes — dark and light (Catppuccin, Corporate, Darcula, Nord, Gruvbox, Solarized)
 - [x] Session logging (ANSI-stripped capture to file with context menu toggle)
 - [x] Right-click context menu (Copy, Paste, Capture, Clear)
-- [ ] Credential vault (AES-256, PBKDF2, pattern matching)
+- [x] Credential vault (AES-256-GCM, PBKDF2, pattern matching, system keychain)
 - [ ] Auto-reconnect with exponential backoff
 - [ ] Session editor (add/edit/delete/reorder)
 

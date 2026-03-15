@@ -106,6 +106,10 @@
     const rowKeyfile     = document.getElementById('row-keyfile');
     const rowPassphrase  = document.getElementById('row-passphrase');
 
+    // Vault credential refs (connect dialog)
+    const rowVaultCred   = document.getElementById('row-vault-cred');
+    const dlgVaultCred   = document.getElementById('dlg-vault-cred');
+
     // Context menu refs
     const contextMenu    = document.getElementById('context-menu');
     const ctxCopy        = document.getElementById('ctx-copy');
@@ -266,6 +270,29 @@
         rowPassword.style.display   = (method === 'password' || method === 'key-and-password') ? 'block' : 'none';
         rowKeyfile.style.display    = (method === 'keyfile' || method === 'key-and-password') ? 'block' : 'none';
         rowPassphrase.style.display = (method === 'keyfile' || method === 'key-and-password') ? 'block' : 'none';
+
+        // Vault credential dropdown
+        if (method === 'vault' && rowVaultCred) {
+            rowVaultCred.style.display = 'block';
+            // Populate credential names from vault
+            const names = window.NtermVault ? window.NtermVault.getCredentialNames() : [];
+            dlgVaultCred.innerHTML = '<option value="">— select —</option>';
+            for (const name of names) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                dlgVaultCred.appendChild(opt);
+            }
+            if (names.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '(vault locked or empty)';
+                opt.disabled = true;
+                dlgVaultCred.appendChild(opt);
+            }
+        } else if (rowVaultCred) {
+            rowVaultCred.style.display = 'none';
+        }
     }
 
     dlgAuthMethod.addEventListener('change', updateAuthFields);
@@ -284,12 +311,12 @@
     document.getElementById('btn-dialog-connect').addEventListener('click', () => {
         const host = dlgHost.value.trim();
         const username = dlgUsername.value.trim();
-        if (!host || !username) {
+        const method = dlgAuthMethod.value;
+
+        if (!host || (!username && method !== 'vault')) {
             dlgHost.focus();
             return;
         }
-
-        const method = dlgAuthMethod.value;
 
         const config = {
             host,
@@ -311,6 +338,10 @@
         if (method === 'agent') {
             config.useAgent = true;
         }
+        if (method === 'vault') {
+            config.credentialName = dlgVaultCred?.value || '';
+            config.useVault = true;
+        }
 
         // Remember credentials (in-memory + persisted)
         lastUsedCreds = {
@@ -325,7 +356,9 @@
         hideConnectDialog();
         connectSession({
             ...config,
-            display_name: `${username}@${host}`,
+            display_name: method === 'vault'
+                ? `${config.credentialName}@${host}`
+                : `${username}@${host}`,
         });
     });
 

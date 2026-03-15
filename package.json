@@ -18,12 +18,15 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
+    "better-sqlite3": "^12.8.0",
     "electron-log": "^5.0.0",
     "electron-store": "^8.2.0",
     "js-yaml": "^4.1.0",
     "ssh2": "^1.16.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.0",
     "@types/ssh2": "^1.15.0",
@@ -35,24 +38,26 @@
     "appId": "com.scottpeterman.nterm",
     "productName": "nterm",
     "directories": {
-        "buildResources": "build",
-        "output": "release"
+      "buildResources": "build",
+      "output": "release"
     },
     "files": [
-        "dist/**/*",
-        "src/renderer/**/*",
-        "node_modules/**/*"
+      "dist/**/*",
+      "src/renderer/**/*",
+      "node_modules/**/*"
     ],
     "win": {
-        "target": "nsis"
+      "target": "nsis"
     },
     "mac": {
-        "target": "dmg"
+      "target": "dmg"
     },
     "linux": {
-        "target": ["AppImage", "deb"],
-            "icon": "nterm-js-icon.png"
-
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "nterm-js-icon.png"
     }
-}
+  }
 }

@@ -78,6 +78,49 @@ contextBridge.exposeInMainWorld('nterm', {
     captureStop: (sessionId: string) =>
         ipcRenderer.invoke('capture:stop', { sessionId }),
 
+    // ─── Vault ───────────────────────────────────────────────
+    vaultStatus: () =>
+        ipcRenderer.invoke('vault:status'),
+
+    vaultInit: (password: string) =>
+        ipcRenderer.invoke('vault:init', { password }),
+
+    vaultUnlock: (password: string, remember: boolean = false) =>
+        ipcRenderer.invoke('vault:unlock', { password, remember }),
+
+    vaultLock: () =>
+        ipcRenderer.invoke('vault:lock'),
+
+    vaultChangePassword: (oldPassword: string, newPassword: string, remember: boolean = false) =>
+        ipcRenderer.invoke('vault:change-password', { oldPassword, newPassword, remember }),
+
+    vaultList: () =>
+        ipcRenderer.invoke('vault:list'),
+
+    vaultAdd: (credential: any) =>
+        ipcRenderer.invoke('vault:add', { credential }),
+
+    vaultUpdate: (name: string, updates: any) =>
+        ipcRenderer.invoke('vault:update', { name, updates }),
+
+    vaultRemove: (name: string) =>
+        ipcRenderer.invoke('vault:remove', { name }),
+
+    vaultSetDefault: (name: string) =>
+        ipcRenderer.invoke('vault:set-default', { name }),
+
+    vaultMatch: (host: string, port: number = 22, tags: string[] = []) =>
+        ipcRenderer.invoke('vault:match', { host, port, tags }),
+
+    vaultDbPath: () =>
+        ipcRenderer.invoke('vault:db-path'),
+
+    vaultKeychainClear: () =>
+        ipcRenderer.invoke('vault:keychain-clear'),
+
+    readKeyFile: () =>
+        ipcRenderer.invoke('dialog:read-keyfile'),
+
     // ─── DevTools ────────────────────────────────────────────
     openDevTools: () =>
         ipcRenderer.invoke('devtools:open'),
@@ -102,5 +145,10 @@ contextBridge.exposeInMainWorld('nterm', {
     // ─── Capture Events (from main process → renderer) ──────
     onCaptureError: (callback: (message: any) => void) => {
         ipcRenderer.on('capture:error', (_event, message) => callback(message));
+    },
+
+    // ─── Vault Events (from main process → renderer) ────────
+    onVaultStateChanged: (callback: (state: any) => void) => {
+        ipcRenderer.on('vault:state-changed', (_event, state) => callback(state));
     },
 });
