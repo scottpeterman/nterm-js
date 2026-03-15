@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import log from 'electron-log';
 import { BrowserWindow } from 'electron';
-
+import { classifyConnectionError, isPrivateAddress } from './networkCheck';
 // ─── Interfaces ──────────────────────────────────────────────
 
 export interface SSHConnectionConfig {
@@ -370,10 +370,27 @@ export class SSHManager {
             });
 
             (this.client as any).on('error', (err: Error) => {
-                log.error(`SSHManager [${this.connectionId}]: Connection error: ${err.message}`);
-                this.status = 'error';
-                this.sendMessage('connectionStatus', { status: 'error', message: `Connection error: ${err.message}` });
-                this.sendMessage('output', { data: `\r\nConnection error: ${err.message}\r\n` });
+    log.error(`SSHManager [${this.connectionId}]: Connection error: ${err.message}`);
+    this.status = 'error';
+
+    // Detect macOS Local Network permission block on private IPs
+    const classification = classifyConnectionError(config.host, err.message);
+
+    if (classification.isPermissionIssue) {
+        log.warn(`SSHManager [${this.connectionId}]: Probable macOS Local Network permission denial for ${config.host}`);
+        this.sendMessage('connectionStatus', {
+            status: 'error',
+            message: classification.friendlyMessage,
+        });
+        this.sendMessage('output', {
+            data:
+                `\r\n\x1b[1;33m⚠ ${classification.friendlyMessage}\x1b[0m\r\n` +
+                `\r\n\x1b[36m${classification.remediation}\x1b[0m\r\n`,
+                    });
+                } else {
+                    this.sendMessage('connectionStatus', { status: 'error', message: `Connection error: ${err.message}` });
+                    this.sendMessage('output', { data: `\r\nConnection error: ${err.message}\r\n` });
+                }
 
                 if (err.message.includes('authentication') || err.message.includes('auth')) {
                     log.warn(`SSHManager [${this.connectionId}]: Auth failed. Password: ${!!this.lastConfig?.password}, Key: ${!!(this.lastConfig?.privateKey || this.lastConfig?.privateKeyPath)}`);

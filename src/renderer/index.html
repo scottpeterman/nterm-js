@@ -30,7 +30,10 @@
         <div id="sidebar">
             <div class="sidebar-header">
                 <span>Sessions</span>
-                <button id="btn-load-sessions" title="Load sessions YAML">&#x1F4C2;</button>
+                <div style="display:flex; gap:4px;">
+                    <button id="btn-add-folder" title="Add folder">+</button>
+                    <button id="btn-load-sessions" title="Load sessions YAML">&#x1F4C2;</button>
+                </div>
             </div>
             <div id="session-search-wrap">
                 <input type="text" id="session-search" placeholder="Filter..." spellcheck="false">
@@ -350,6 +353,98 @@
             <div class="modal-footer">
                 <button id="btn-vault-editor-cancel" class="btn-secondary">Cancel</button>
                 <button id="btn-vault-save" class="btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Session Tree Context Menu (sessions) ────────────────── -->
+    <div id="tree-ctx-menu" class="context-menu" style="display:none;">
+        <div class="ctx-item" id="tree-ctx-connect">Connect</div>
+        <div class="ctx-separator"></div>
+        <div class="ctx-item" id="tree-ctx-edit">Edit…</div>
+        <div class="ctx-item" id="tree-ctx-duplicate">Duplicate</div>
+        <div class="ctx-separator"></div>
+        <div class="ctx-item ctx-danger" id="tree-ctx-delete">Delete</div>
+    </div>
+
+    <!-- ─── Session Tree Context Menu (folders) ──────────────── -->
+    <div id="tree-folder-ctx-menu" class="context-menu" style="display:none;">
+        <div class="ctx-item" id="tree-ctx-add-session">Add Session…</div>
+        <div class="ctx-separator"></div>
+        <div class="ctx-item" id="tree-ctx-add-folder">Add Folder…</div>
+        <div class="ctx-item" id="tree-ctx-rename-folder">Rename Folder…</div>
+        <div class="ctx-separator"></div>
+        <div class="ctx-item ctx-danger" id="tree-ctx-delete-folder">Delete Folder</div>
+    </div>
+
+    <!-- ─── Session Editor Dialog (modal) ─────────────────────── -->
+    <div id="session-editor-dialog" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width: 460px;">
+            <div class="modal-header">
+                <span id="session-editor-title">Edit Session</span>
+                <button class="modal-close" id="btn-session-editor-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <fieldset style="border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin:0 0 12px 0;">
+                    <legend style="font-size:12px; color:var(--text-secondary); padding:0 6px;">Connection</legend>
+                    <div class="form-row">
+                        <label for="sed-name">Name</label>
+                        <input type="text" id="sed-name" placeholder="display name" spellcheck="false" autocomplete="off">
+                    </div>
+                    <div class="form-row">
+                        <label for="sed-description">Description</label>
+                        <input type="text" id="sed-description" placeholder="e.g. juniper_junos – qfx5100" spellcheck="false" autocomplete="off">
+                    </div>
+                    <div class="form-row">
+                        <label>Host / Port</label>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <input type="text" id="sed-host" placeholder="192.168.1.1" spellcheck="false" autocomplete="off" style="flex:1;">
+                            <span style="color:var(--text-muted);">:</span>
+                            <input type="number" id="sed-port" value="22" min="1" max="65535" style="width:70px;">
+                        </div>
+                    </div>
+                </fieldset>
+                <fieldset style="border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin:0;">
+                    <legend style="font-size:12px; color:var(--text-secondary); padding:0 6px;">Authentication</legend>
+                    <div class="form-row">
+                        <label for="sed-credential">Credential</label>
+                        <select id="sed-credential">
+                            <option value="">(Use Defaults)</option>
+                            <option value="__agent__">(SSH Agent)</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="sed-legacy">
+                            Legacy mode (older devices)
+                        </label>
+                    </div>
+                </fieldset>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-session-editor-cancel" class="btn-secondary">Cancel</button>
+                <button id="btn-session-editor-save" class="btn-primary">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Folder Editor Dialog (modal) ──────────────────────── -->
+    <div id="folder-editor-dialog" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width: 380px;">
+            <div class="modal-header">
+                <span id="folder-editor-title">Add Folder</span>
+                <button class="modal-close" id="btn-folder-editor-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label for="fed-name">Folder Name</label>
+                    <input type="text" id="fed-name" placeholder="e.g. Lab Switches" spellcheck="false" autocomplete="off">
+                </div>
+                <div id="folder-editor-error" style="display:none; color:var(--red); font-size:12px; margin-top:8px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-folder-editor-cancel" class="btn-secondary">Cancel</button>
+                <button id="btn-folder-editor-save" class="btn-primary">OK</button>
             </div>
         </div>
     </div>

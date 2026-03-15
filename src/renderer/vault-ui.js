@@ -9,6 +9,11 @@
     let vaultState = { initialized: false, unlocked: false, credentialCount: 0, keychainAvailable: false };
     let credentials = [];  // CredentialSummary[] from vault:list
 
+    // Track whether we've already prompted this session.
+    // If the user dismisses the unlock dialog, don't re-prompt
+    // on every state-change event.
+    let startupPromptDone = false;
+
     // ─── DOM refs ────────────────────────────────────────────
     const statusBar       = document.getElementById('statusbar');
     const vaultIndicator  = document.getElementById('vault-indicator');
@@ -258,6 +263,7 @@
     document.getElementById('btn-vault-lock')?.addEventListener('click', async () => {
         await window.nterm.vaultLock();
         hideManagerDialog();
+        credentials = [];  // Clear cached credentials on lock
         await refreshVaultState();
     });
     document.getElementById('btn-vault-manager-close')?.addEventListener('click', hideManagerDialog);
@@ -431,13 +437,42 @@
             vaultState = { initialized: false, unlocked: false, credentialCount: 0, keychainAvailable: false };
         }
         updateIndicator();
+
+        // Hydrate credential names whenever vault is unlocked.
+        // This ensures getCredentialNames() returns real data for
+        // the connect dialog and session editor dropdowns — not just
+        // when the manager dialog is manually opened.
+        if (vaultState.unlocked) {
+            await refreshCredentialList();
+        } else {
+            credentials = [];
+        }
     }
 
-    // Listen for state changes from main process (auto-unlock, etc.)
+    // Listen for state changes from main process (auto-unlock, startup push, etc.)
     if (window.nterm.onVaultStateChanged) {
-        window.nterm.onVaultStateChanged((state) => {
+        window.nterm.onVaultStateChanged(async (state) => {
+            const wasUnlocked = vaultState.unlocked;
             vaultState = { ...vaultState, ...state };
             updateIndicator();
+
+            if (vaultState.unlocked && !wasUnlocked) {
+                // Just became unlocked (auto-unlock from keychain, or
+                // main process pushed state after tryAutoUnlock).
+                // Hydrate credential list so dropdowns work immediately.
+                console.log('[vault] State changed to unlocked — hydrating credentials');
+                await refreshCredentialList();
+            } else if (!vaultState.unlocked && wasUnlocked) {
+                // Locked — clear cached credentials
+                credentials = [];
+            }
+
+            // Startup prompt: if vault exists but is locked and we
+            // haven't prompted yet this session, show the unlock dialog.
+            if (vaultState.initialized && !vaultState.unlocked && !startupPromptDone) {
+                startupPromptDone = true;
+                showUnlockDialog();
+            }
         });
     }
 
@@ -478,6 +513,9 @@
     };
 
     // ─── Initial State ───────────────────────────────────────
+    // Poll vault status on load. The main process will also push
+    // a vault:state-changed event after did-finish-load, which
+    // triggers the startup unlock prompt if needed.
     refreshVaultState();
 
 })();

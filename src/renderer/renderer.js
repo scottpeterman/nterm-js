@@ -118,6 +118,40 @@
     const ctxCaptureText = document.getElementById('ctx-capture-text');
     const ctxClear       = document.getElementById('ctx-clear');
 
+    // Session tree context menu refs
+    const treeCtxMenu        = document.getElementById('tree-ctx-menu');
+    const treeCtxConnect     = document.getElementById('tree-ctx-connect');
+    const treeCtxEdit        = document.getElementById('tree-ctx-edit');
+    const treeCtxDuplicate   = document.getElementById('tree-ctx-duplicate');
+    const treeCtxDelete      = document.getElementById('tree-ctx-delete');
+
+    const treeFolderCtxMenu      = document.getElementById('tree-folder-ctx-menu');
+    const treeCtxAddSession      = document.getElementById('tree-ctx-add-session');
+    const treeCtxAddFolder       = document.getElementById('tree-ctx-add-folder');
+    const treeCtxRenameFolder    = document.getElementById('tree-ctx-rename-folder');
+    const treeCtxDeleteFolder    = document.getElementById('tree-ctx-delete-folder');
+
+    // Session editor dialog refs
+    const sessionEditorDialog = document.getElementById('session-editor-dialog');
+    const sessionEditorTitle  = document.getElementById('session-editor-title');
+    const sedName         = document.getElementById('sed-name');
+    const sedDescription  = document.getElementById('sed-description');
+    const sedHost         = document.getElementById('sed-host');
+    const sedPort         = document.getElementById('sed-port');
+    const sedCredential   = document.getElementById('sed-credential');
+    const sedLegacy       = document.getElementById('sed-legacy');
+
+    // Folder editor dialog refs
+    const folderEditorDialog = document.getElementById('folder-editor-dialog');
+    const folderEditorTitle  = document.getElementById('folder-editor-title');
+    const fedName            = document.getElementById('fed-name');
+    const folderEditorError  = document.getElementById('folder-editor-error');
+
+    // Session tree editing state
+    let treeCtxFolderIdx  = -1;   // index into sessionData[]
+    let treeCtxSessionIdx = -1;   // index into sessionData[folderIdx].sessions[]
+    let sessionEditorMode = 'edit'; // 'edit' | 'add'
+
     // ─── Settings: Load & Apply ──────────────────────────────
     // Called once on startup before anything renders.
 
@@ -408,7 +442,8 @@
         sessionTree.innerHTML = '';
         if (!Array.isArray(data)) return;
 
-        for (const folder of data) {
+        for (let fi = 0; fi < data.length; fi++) {
+            const folder = data[fi];
             const folderName = folder.folder_name || folder.name || 'Unnamed';
             const sessions = folder.sessions || folder.children || [];
 
@@ -424,23 +459,48 @@
                 items.forEach(el => el.style.display = isOpen ? 'none' : 'flex');
             });
 
+            // Folder right-click
+            folderEl.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                hideAllContextMenus();
+                treeCtxFolderIdx = fi;
+                treeCtxSessionIdx = -1;
+                showContextMenuAt(treeFolderCtxMenu, e.clientX, e.clientY);
+            });
+
             const wrapper = document.createElement('div');
             wrapper.appendChild(folderEl);
 
-            for (const session of sessions) {
+            for (let si = 0; si < sessions.length; si++) {
+                const session = sessions[si];
                 const el = document.createElement('div');
                 el.className = 'tree-session';
                 el.setAttribute('data-folder', folderName);
                 el.style.display = 'none';
-                el.innerHTML = `<span class="dot"></span>${session.display_name || session.host}`;
+
+                const label = session.display_name || session.host;
+                const desc = session.DeviceType ? ` (${session.DeviceType})` : '';
+                el.innerHTML = `<span class="dot"></span>${label}${desc}`;
 
                 el.addEventListener('dblclick', () => {
-                    if (session.password) {
+                    if (session.password || session.credentialName || session.useVault || session.useAgent) {
                         connectSession(session);
                     } else {
                         showConnectDialog(session);
                     }
                 });
+
+                // Session right-click
+                el.addEventListener('contextmenu', ((folderIdx, sessionIdx) => (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    hideAllContextMenus();
+                    treeCtxFolderIdx = folderIdx;
+                    treeCtxSessionIdx = sessionIdx;
+                    showContextMenuAt(treeCtxMenu, e.clientX, e.clientY);
+                })(fi, si));
+
                 wrapper.appendChild(el);
             }
 
@@ -455,6 +515,440 @@
             el.style.display = el.textContent.toLowerCase().includes(filter) ? 'flex' : 'none';
         });
     });
+
+    // ─── Context Menu Helpers ─────────────────────────────────
+
+    function hideAllContextMenus() {
+        contextMenu.style.display = 'none';
+        treeCtxMenu.style.display = 'none';
+        treeFolderCtxMenu.style.display = 'none';
+    }
+
+    function showContextMenuAt(menu, x, y) {
+        const menuW = 200;
+        const menuH = 200;
+        menu.style.left = `${Math.min(x, window.innerWidth - menuW)}px`;
+        menu.style.top = `${Math.min(y, window.innerHeight - menuH)}px`;
+        menu.style.display = 'block';
+    }
+
+    // Hide all context menus on click outside
+    document.addEventListener('click', (e) => {
+        if (!treeCtxMenu.contains(e.target) && !treeFolderCtxMenu.contains(e.target)) {
+            treeCtxMenu.style.display = 'none';
+            treeFolderCtxMenu.style.display = 'none';
+        }
+    });
+
+    // Hide tree context menus on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideAllContextMenus();
+        }
+    });
+
+    // Also hide tree menus on sidebar right-click background
+    sessionTree.addEventListener('contextmenu', (e) => {
+        // Only fire if clicking empty space (not a folder or session)
+        if (e.target === sessionTree) {
+            e.preventDefault();
+            hideAllContextMenus();
+        }
+    });
+
+    // ─── Session Tree Context Menu: Session Actions ──────────
+
+    treeCtxConnect.addEventListener('click', () => {
+        treeCtxMenu.style.display = 'none';
+        const session = getSessionByIdx(treeCtxFolderIdx, treeCtxSessionIdx);
+        if (!session) return;
+
+        if (session.password || session.credentialName || session.useVault) {
+            connectSession(session);
+        } else {
+            showConnectDialog(session);
+        }
+    });
+
+    treeCtxEdit.addEventListener('click', () => {
+        treeCtxMenu.style.display = 'none';
+        const session = getSessionByIdx(treeCtxFolderIdx, treeCtxSessionIdx);
+        if (session) showSessionEditor('edit', treeCtxFolderIdx, treeCtxSessionIdx);
+    });
+
+    treeCtxDuplicate.addEventListener('click', () => {
+        treeCtxMenu.style.display = 'none';
+        duplicateSession(treeCtxFolderIdx, treeCtxSessionIdx);
+    });
+
+    treeCtxDelete.addEventListener('click', () => {
+        treeCtxMenu.style.display = 'none';
+        const session = getSessionByIdx(treeCtxFolderIdx, treeCtxSessionIdx);
+        if (!session) return;
+        const name = session.display_name || session.host;
+        if (confirm(`Delete session "${name}"?`)) {
+            deleteSession(treeCtxFolderIdx, treeCtxSessionIdx);
+        }
+    });
+
+    // ─── Session Tree Context Menu: Folder Actions ───────────
+
+    treeCtxAddSession.addEventListener('click', () => {
+        treeFolderCtxMenu.style.display = 'none';
+        showSessionEditor('add', treeCtxFolderIdx, -1);
+    });
+
+    treeCtxAddFolder.addEventListener('click', () => {
+        treeFolderCtxMenu.style.display = 'none';
+        addFolder();
+    });
+
+    treeCtxRenameFolder.addEventListener('click', () => {
+        treeFolderCtxMenu.style.display = 'none';
+        renameFolder(treeCtxFolderIdx);
+    });
+
+    treeCtxDeleteFolder.addEventListener('click', () => {
+        treeFolderCtxMenu.style.display = 'none';
+        const folder = sessionData?.[treeCtxFolderIdx];
+        if (!folder) return;
+        const name = folder.folder_name || folder.name || 'Unnamed';
+        const sessions = folder.sessions || folder.children || [];
+        const msg = sessions.length > 0
+            ? `Delete folder "${name}" and its ${sessions.length} session(s)?`
+            : `Delete empty folder "${name}"?`;
+        if (confirm(msg)) {
+            deleteFolder(treeCtxFolderIdx);
+        }
+    });
+
+    // Sidebar header "+" button
+    document.getElementById('btn-add-folder').addEventListener('click', () => {
+        addFolder();
+    });
+
+    // ─── Session Editor Dialog ───────────────────────────────
+
+    function showSessionEditor(mode, folderIdx, sessionIdx) {
+        if (!sessionData) return;
+
+        sessionEditorMode = mode;
+        treeCtxFolderIdx = folderIdx;
+        treeCtxSessionIdx = sessionIdx;
+
+        // Populate credential dropdown with vault names
+        populateCredentialDropdown();
+
+        if (mode === 'edit') {
+            sessionEditorTitle.textContent = 'Edit Session';
+            const session = getSessionByIdx(folderIdx, sessionIdx);
+            if (!session) return;
+
+            sedName.value = session.display_name || '';
+            sedDescription.value = session.DeviceType || '';
+            sedHost.value = session.host || '';
+            sedPort.value = session.port || 22;
+            sedLegacy.checked = session.legacyMode || false;
+
+            // Set credential dropdown
+            if (session.credentialName) {
+                sedCredential.value = session.credentialName;
+            } else if (session.useAgent) {
+                sedCredential.value = '__agent__';
+            } else {
+                sedCredential.value = '';
+            }
+        } else {
+            // 'add' mode — blank form
+            sessionEditorTitle.textContent = 'Add Session';
+            sedName.value = '';
+            sedDescription.value = '';
+            sedHost.value = '';
+            sedPort.value = 22;
+            sedLegacy.checked = false;
+            sedCredential.value = '';
+        }
+
+        sessionEditorDialog.style.display = 'flex';
+        sedName.focus();
+    }
+
+    function hideSessionEditor() {
+        sessionEditorDialog.style.display = 'none';
+    }
+
+    function populateCredentialDropdown() {
+        // Keep the first two static options, remove dynamic vault entries
+        while (sedCredential.options.length > 2) {
+            sedCredential.remove(2);
+        }
+
+        // Add vault credential names if available
+        const names = window.NtermVault ? window.NtermVault.getCredentialNames() : [];
+        for (const name of names) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = `🔑 ${name}`;
+            sedCredential.appendChild(opt);
+        }
+    }
+
+    document.getElementById('btn-session-editor-close').addEventListener('click', hideSessionEditor);
+    document.getElementById('btn-session-editor-cancel').addEventListener('click', hideSessionEditor);
+
+    document.getElementById('btn-session-editor-save').addEventListener('click', () => {
+        const host = sedHost.value.trim();
+        if (!host) {
+            sedHost.focus();
+            return;
+        }
+
+        const name = sedName.value.trim() || host;
+        const credValue = sedCredential.value;
+
+        const sessionObj = {
+            display_name: name,
+            host: host,
+            port: parseInt(sedPort.value) || 22,
+        };
+
+        // Only write DeviceType if non-empty
+        const desc = sedDescription.value.trim();
+        if (desc) sessionObj.DeviceType = desc;
+
+        // Credential mapping
+        if (credValue === '__agent__') {
+            sessionObj.useAgent = true;
+        } else if (credValue && credValue !== '') {
+            sessionObj.credentialName = credValue;
+            sessionObj.useVault = true;
+        }
+
+        if (sedLegacy.checked) {
+            sessionObj.legacyMode = true;
+        }
+
+        if (sessionEditorMode === 'edit') {
+            updateSession(treeCtxFolderIdx, treeCtxSessionIdx, sessionObj);
+        } else {
+            addSession(treeCtxFolderIdx, sessionObj);
+        }
+
+        hideSessionEditor();
+    });
+
+    // Enter to save in session editor fields
+    ['sed-name', 'sed-description', 'sed-host', 'sed-port'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('btn-session-editor-save').click();
+            }
+        });
+    });
+
+    // Escape to close session editor
+    sessionEditorDialog.addEventListener('click', (e) => {
+        if (e.target === sessionEditorDialog) hideSessionEditor();
+    });
+
+    // ─── Session CRUD Operations ─────────────────────────────
+
+    function getSessionByIdx(folderIdx, sessionIdx) {
+        if (!sessionData || folderIdx < 0 || folderIdx >= sessionData.length) return null;
+        const folder = sessionData[folderIdx];
+        const sessions = folder.sessions || folder.children || [];
+        if (sessionIdx < 0 || sessionIdx >= sessions.length) return null;
+        return sessions[sessionIdx];
+    }
+
+    function getSessionsArray(folder) {
+        if (!folder.sessions && folder.children) {
+            // Normalize to 'sessions' key
+            folder.sessions = folder.children;
+            delete folder.children;
+        }
+        if (!folder.sessions) folder.sessions = [];
+        return folder.sessions;
+    }
+
+    function updateSession(folderIdx, sessionIdx, newData) {
+        const folder = sessionData[folderIdx];
+        const sessions = getSessionsArray(folder);
+        if (sessionIdx < 0 || sessionIdx >= sessions.length) return;
+
+        // Preserve fields not in the editor (username, password, etc.)
+        const existing = sessions[sessionIdx];
+        const merged = { ...existing, ...newData };
+
+        // Clean up credential fields when switching modes
+        if (newData.useVault) {
+            delete merged.useAgent;
+        } else if (newData.useAgent) {
+            delete merged.credentialName;
+            delete merged.useVault;
+        } else {
+            // "Use Defaults" — remove vault/agent overrides
+            delete merged.credentialName;
+            delete merged.useVault;
+            delete merged.useAgent;
+        }
+
+        sessions[sessionIdx] = merged;
+        renderSessionTree(sessionData);
+        saveSessionsToFile();
+    }
+
+    function addSession(folderIdx, sessionObj) {
+        const folder = sessionData[folderIdx];
+        const sessions = getSessionsArray(folder);
+        sessions.push(sessionObj);
+        renderSessionTree(sessionData);
+        saveSessionsToFile();
+    }
+
+    function duplicateSession(folderIdx, sessionIdx) {
+        const original = getSessionByIdx(folderIdx, sessionIdx);
+        if (!original) return;
+
+        const copy = JSON.parse(JSON.stringify(original));
+        copy.display_name = (copy.display_name || copy.host) + ' (copy)';
+
+        const folder = sessionData[folderIdx];
+        const sessions = getSessionsArray(folder);
+        sessions.splice(sessionIdx + 1, 0, copy);
+        renderSessionTree(sessionData);
+        saveSessionsToFile();
+    }
+
+    function deleteSession(folderIdx, sessionIdx) {
+        const folder = sessionData[folderIdx];
+        const sessions = getSessionsArray(folder);
+        sessions.splice(sessionIdx, 1);
+        renderSessionTree(sessionData);
+        saveSessionsToFile();
+    }
+
+    // ─── Folder Editor Dialog ────────────────────────────────
+
+    let folderEditorMode = 'add';       // 'add' | 'rename'
+    let folderEditorTargetIdx = -1;     // folder index for rename
+
+    function showFolderEditor(mode, folderIdx) {
+        folderEditorMode = mode;
+        folderEditorTargetIdx = folderIdx;
+        folderEditorError.style.display = 'none';
+
+        if (mode === 'rename') {
+            const folder = sessionData?.[folderIdx];
+            const oldName = folder?.folder_name || folder?.name || '';
+            folderEditorTitle.textContent = 'Rename Folder';
+            fedName.value = oldName;
+        } else {
+            folderEditorTitle.textContent = 'Add Folder';
+            fedName.value = '';
+        }
+
+        folderEditorDialog.style.display = 'flex';
+        fedName.focus();
+        fedName.select();
+    }
+
+    function hideFolderEditor() {
+        folderEditorDialog.style.display = 'none';
+    }
+
+    function commitFolderEditor() {
+        const name = fedName.value.trim();
+        if (!name) {
+            folderEditorError.textContent = 'Folder name is required';
+            folderEditorError.style.display = 'block';
+            fedName.focus();
+            return;
+        }
+
+        if (folderEditorMode === 'rename') {
+            const folder = sessionData?.[folderEditorTargetIdx];
+            if (!folder) return;
+
+            if (folder.folder_name !== undefined) {
+                folder.folder_name = name;
+            } else {
+                folder.name = name;
+            }
+        } else {
+            // Add
+            if (!sessionData) sessionData = [];
+            sessionData.push({ folder_name: name, sessions: [] });
+        }
+
+        hideFolderEditor();
+        renderSessionTree(sessionData);
+        saveSessionsToFile();
+    }
+
+    // Folder editor event wiring
+    document.getElementById('btn-folder-editor-save')?.addEventListener('click', commitFolderEditor);
+    document.getElementById('btn-folder-editor-cancel')?.addEventListener('click', hideFolderEditor);
+    document.getElementById('btn-folder-editor-close')?.addEventListener('click', hideFolderEditor);
+
+    fedName?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commitFolderEditor();
+        if (e.key === 'Escape') hideFolderEditor();
+    });
+
+    if (folderEditorDialog) folderEditorDialog.addEventListener('click', (e) => {
+        if (e.target === folderEditorDialog) hideFolderEditor();
+    });
+
+    // ─── Folder CRUD Operations ──────────────────────────────
+
+    function addFolder() {
+        showFolderEditor('add', -1);
+    }
+
+    function renameFolder(folderIdx) {
+        showFolderEditor('rename', folderIdx);
+    }
+
+    function deleteFolder(folderIdx) {
+        sessionData.splice(folderIdx, 1);
+        renderSessionTree(sessionData);
+        saveSessionsToFile();
+    }
+
+    // ─── Save Sessions to File ───────────────────────────────
+
+    async function saveSessionsToFile() {
+        if (!sessionData) return;
+
+        try {
+            const result = await window.nterm.saveSessions(sessionData);
+
+            if (result?.error === 'No sessions file loaded') {
+                // No file associated yet — prompt for save location.
+                // This handles the "started from scratch" case where the
+                // user added folders/sessions without loading a file first.
+                const saveResult = await window.nterm.saveSessionsAs(sessionData);
+                if (saveResult?.error) {
+                    setStatus(`Save failed: ${saveResult.error}`);
+                } else if (saveResult?.filePath) {
+                    const fileName = saveResult.filePath.split(/[\\/]/).pop();
+                    setStatus(`Saved: ${fileName}`);
+                }
+                // User cancelled save-as dialog — that's fine, data is still in memory
+                return;
+            }
+
+            if (result?.error) {
+                setStatus(`Save failed: ${result.error}`);
+            } else {
+                setStatus('Sessions saved');
+            }
+        } catch (err) {
+            console.error('[nterm] Failed to save sessions:', err);
+            setStatus('Save failed');
+        }
+    }
 
     // ─── Connect Session ─────────────────────────────────────
 
@@ -798,15 +1292,15 @@
 
     // Hide on click outside
     document.addEventListener('click', (e) => {
-        if (!contextMenu.contains(e.target)) {
-            contextMenu.style.display = 'none';
+        if (!contextMenu.contains(e.target) && !treeCtxMenu.contains(e.target) && !treeFolderCtxMenu.contains(e.target)) {
+            hideAllContextMenus();
         }
     });
 
     // Hide on Escape (also hides connect dialog — existing behavior preserved)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            contextMenu.style.display = 'none';
+            hideAllContextMenus();
         }
     });
 

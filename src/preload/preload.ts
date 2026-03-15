@@ -39,6 +39,11 @@ contextBridge.exposeInMainWorld('nterm', {
     loadLastSessionsFile: () =>
         ipcRenderer.invoke('sessions:load-last'),
 
+    saveSessions: (sessions: any) =>
+        ipcRenderer.invoke('sessions:save', { sessions }),
+
+    saveSessionsAs: (sessions: any) =>
+        ipcRenderer.invoke('sessions:save-as', { sessions }),
     // ─── Settings ────────────────────────────────────────────
     getSettings: () =>
         ipcRenderer.invoke('settings:get-all'),

@@ -9,6 +9,7 @@ import * as yaml from 'js-yaml';
 import log from 'electron-log';
 import { SSHManager, SSHConnectionConfig } from './sshManager';
 import { registerVaultIpc, getVaultStore, enrichSshConfig, tryAutoUnlock } from './vaultIpc';
+import { probeLanAccess } from './networkCheck';
 
 import {
     getSetting,
@@ -253,7 +254,33 @@ function buildMenu(): void {
 app.whenReady().then(() => {
     registerVaultIpc();
     createWindow();
-}); 
+
+    // After renderer finishes loading, try auto-unlock and push
+    // vault state so vault-ui.js can show the unlock prompt if needed.
+    mainWindow?.webContents.once('did-finish-load', () => {
+        if (!mainWindow) return;
+
+        const store = getVaultStore();
+
+        // Try keychain auto-unlock first (silent — no UI)
+        if (store.isInitialized && !store.isUnlocked) {
+            tryAutoUnlock(mainWindow);
+        }
+
+        // Push initial state to renderer regardless of outcome.
+        // vault-ui.js onVaultStateChanged handler will:
+        //   - If unlocked (auto-unlock worked): hydrate credential list
+        //   - If initialized + locked: show unlock prompt
+        //   - If not initialized: do nothing (first run)
+        mainWindow.webContents.send('vault:state-changed', {
+            initialized: store.isInitialized,
+            unlocked: store.isUnlocked,
+            credentialCount: store.isUnlocked ? store.credentialCount : 0,
+            keychainAvailable: true,  // safe default; vault-ui.js will poll for accurate value
+        });
+    });
+});
+
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
@@ -344,6 +371,65 @@ ipcMain.handle('sessions:load-last', async () => {
     }
 });
 
+// ─── IPC: Save Sessions File ────────────────────────────────
+ipcMain.handle('sessions:save', async (_event, { sessions }: { sessions: any }) => {
+    const filePath = getSetting('lastSessionsFile');
+    if (!filePath) {
+        return { error: 'No sessions file loaded' };
+    }
+
+    try {
+        const isJson = filePath.endsWith('.json');
+        const content = isJson
+            ? JSON.stringify(sessions, null, 2)
+            : yaml.dump(sessions, { noRefs: true, lineWidth: -1, quotingType: '"' });
+
+        fs.writeFileSync(filePath, content, 'utf8');
+        log.info(`Sessions saved to ${filePath}`);
+        return { success: true, filePath };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        log.error(`Failed to save sessions: ${msg}`);
+        return { error: msg };
+    }
+});
+
+// ─── IPC: Save Sessions As (new file) ─────────────────────
+ipcMain.handle('sessions:save-as', async (_event, { sessions }: { sessions: any }) => {
+    if (!mainWindow) return { error: 'No window' };
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save Sessions As',
+        defaultPath: 'sessions.yaml',
+        filters: [
+            { name: 'YAML Files', extensions: ['yaml', 'yml'] },
+            { name: 'JSON Files', extensions: ['json'] },
+            { name: 'All Files', extensions: ['*'] },
+        ],
+    });
+
+    if (result.canceled || !result.filePath) return null;
+
+    const filePath = result.filePath;
+    try {
+        const isJson = filePath.endsWith('.json');
+        const content = isJson
+            ? JSON.stringify(sessions, null, 2)
+            : yaml.dump(sessions, { noRefs: true, lineWidth: -1, quotingType: '"' });
+
+        fs.writeFileSync(filePath, content, 'utf8');
+
+        // Remember this path for future saves and auto-load
+        setSetting('lastSessionsFile', filePath);
+
+        log.info(`Sessions saved as ${filePath}`);
+        return { success: true, filePath };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        log.error(`Failed to save sessions: ${msg}`);
+        return { error: msg };
+    }
+});
 // ─── IPC: SSH Connect ───────────────────────────────────────
 ipcMain.handle('ssh:connect', async (event, { sessionId, config }: { sessionId: string; config: SSHConnectionConfig }) => {
     if (!mainWindow) return { error: 'No window' };
@@ -479,6 +565,9 @@ ipcMain.handle('app:version-info', async () => {
     };
 });
 
+ipcMain.handle('network:check-lan-access', async () => {
+    return await probeLanAccess();
+});
 // ─── IPC: Session Capture ───────────────────────────────────
 
 // Capture — Select File (native save dialog)

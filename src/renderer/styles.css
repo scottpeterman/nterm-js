@@ -476,6 +476,22 @@ select {
     margin: 4px 0;
 }
 
+.ctx-item.ctx-danger {
+    color: var(--red);
+}
+.ctx-item.ctx-danger:hover {
+    background: var(--red);
+    color: #fff;
+}
+
+/* ─── Session Editor Fieldset ──────────────────────────────── */
+.modal fieldset {
+    border-color: var(--border);
+}
+.modal fieldset legend {
+    color: var(--text-secondary);
+}
+
 /* ─── Capture Indicator (tab dot) ──────────────────────────── */
 
 .tab-status.capturing {
