@@ -330,11 +330,25 @@ export function enrichSshConfig(config: any): any {
     enriched.username = resolved.username;
 
     if (resolved.sshKey) {
+        // Key auth (with optional password fallback)
         enriched.privateKey = resolved.sshKey;
         enriched.passphrase = resolved.sshKeyPassphrase || undefined;
-    }
-    if (resolved.password) {
+        if (resolved.password) {
+            enriched.password = resolved.password;
+        }
+    } else if (resolved.password) {
+        // Password-only auth — explicitly clear key fields
+        // so sshManager doesn't fall back to default key discovery
         enriched.password = resolved.password;
+        enriched.privateKey = undefined;
+        enriched.privateKeyPath = undefined;
+        enriched.passphrase = undefined;
+        enriched.useAgent = false;
+    } else {
+        // No key, no password — agent auth
+        enriched.useAgent = true;
+        enriched.privateKey = undefined;
+        enriched.privateKeyPath = undefined;
     }
 
     // Tag that credentials came from vault (for status display in renderer)

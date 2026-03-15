@@ -491,6 +491,9 @@
                 useAgent: config.useAgent,
                 legacyMode: config.legacyMode,
                 tryKeyboard: true,
+                // Vault fields — enrichSshConfig() in main resolves these server-side
+                credentialName: config.credentialName,
+                useVault: config.useVault,
             };
 
             await window.nterm.connect(sessionId, sshConfig);

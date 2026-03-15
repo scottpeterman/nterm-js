@@ -8,6 +8,8 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import log from 'electron-log';
 import { SSHManager, SSHConnectionConfig } from './sshManager';
+import { registerVaultIpc, getVaultStore, enrichSshConfig, tryAutoUnlock } from './vaultIpc';
+
 import {
     getSetting,
     setSetting,
@@ -18,7 +20,6 @@ import {
     getStorePath,
     WindowBounds,
 } from './settings';
-import { registerVaultIpc, getVaultStore, enrichSshConfig, tryAutoUnlock } from './vaultIpc';
 
 // ─── Session Registry ────────────────────────────────────────
 const sessions = new Map<string, SSHManager>();
@@ -79,11 +80,6 @@ function createWindow(): void {
 
     mainWindow.loadFile(path.join(__dirname, '..', '..', 'src', 'renderer', 'index.html'));
 
-    // Auto-unlock vault from system keychain after renderer is ready
-    mainWindow.webContents.on('did-finish-load', () => {
-        tryAutoUnlock(mainWindow);
-    });
-
     // TODO: Remove after debugging — auto-open DevTools on launch
     // mainWindow.webContents.openDevTools({ mode: 'detach' });
 
@@ -128,10 +124,6 @@ function createWindow(): void {
             manager.disconnect();
         }
         sessions.clear();
-
-        // Lock vault on close — clear key from memory
-        getVaultStore().lock();
-
         mainWindow = null;
     });
 
@@ -261,7 +253,7 @@ function buildMenu(): void {
 app.whenReady().then(() => {
     registerVaultIpc();
     createWindow();
-});
+}); 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
@@ -356,10 +348,9 @@ ipcMain.handle('sessions:load-last', async () => {
 ipcMain.handle('ssh:connect', async (event, { sessionId, config }: { sessionId: string; config: SSHConnectionConfig }) => {
     if (!mainWindow) return { error: 'No window' };
 
-    // Inject vault credentials if available (secrets stay in main process)
-    config = enrichSshConfig(config) as SSHConnectionConfig;
-
     try {
+        config = enrichSshConfig(config);  // inject vault creds before connect
+
         const manager = new SSHManager(mainWindow, sessionId, sessionId);
         sessions.set(sessionId, manager);
 
@@ -437,23 +428,6 @@ ipcMain.handle('devtools:open', async () => {
     }
 });
 
-// ─── IPC: Browse for Key File ───────────────────────────────
-ipcMain.handle('dialog:select-keyfile', async () => {
-    if (!mainWindow) return null;
-
-    const result = await dialog.showOpenDialog(mainWindow, {
-        title: 'Select SSH Private Key',
-        defaultPath: path.join(require('os').homedir(), '.ssh'),
-        filters: [
-            { name: 'All Files', extensions: ['*'] },
-        ],
-        properties: ['openFile'],
-    });
-
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
-});
-
 // ─── IPC: Read Key File Content (for vault editor) ──────────
 ipcMain.handle('dialog:read-keyfile', async () => {
     if (!mainWindow) return null;
@@ -475,6 +449,23 @@ ipcMain.handle('dialog:read-keyfile', async () => {
     } catch (err) {
         return { error: err instanceof Error ? err.message : 'Failed to read key file' };
     }
+});
+
+// ─── IPC: Browse for Key File ───────────────────────────────
+ipcMain.handle('dialog:select-keyfile', async () => {
+    if (!mainWindow) return null;
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select SSH Private Key',
+        defaultPath: path.join(require('os').homedir(), '.ssh'),
+        filters: [
+            { name: 'All Files', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
 });
 
 // ─── IPC: App Version Info ──────────────────────────────────
