@@ -202,7 +202,7 @@ Settings are owned by the main process (`settings.ts`) and exposed to the render
                         │  Connect dialog "Vault Credential"   │
                         └──────────────┬───────────────────────┘
                                        │ IPC (metadata only — no secrets)
-                        ┌──────────────▼───────────────────────┐
+                        ┌──────────────▼────────────────────────┐
                         │         Main Process (vaultIpc.ts)    │
                         │  enrichSshConfig() at connect time    │
                         ├───────────────────────────────────────┤
@@ -212,7 +212,7 @@ Settings are owned by the main process (`settings.ts`) and exposed to the render
                         │  vaultKeychain.ts  — OS keychain      │
                         └───────────────────────────────────────┘
                                        │
-                        ┌──────────────▼───────────────────────┐
+                        ┌──────────────▼────────────────────────┐
                         │         vault.db (SQLite)             │
                         │  vault_meta: salt, verify token       │
                         │  credentials: encrypted blobs         │
@@ -356,8 +356,8 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 - [x] Session logging (ANSI-stripped capture to file with context menu toggle)
 - [x] Right-click context menu (Copy, Paste, Capture, Clear)
 - [x] Credential vault (AES-256-GCM, PBKDF2, pattern matching, system keychain)
-- [ ] Auto-reconnect with exponential backoff
-- [ ] Session editor (add/edit/delete/reorder)
+- [x] Auto-reconnect with exponential backoff
+- [x] Session editor (add/edit/delete/reorder)
 
 ### Phase 2 — Intelligence
 

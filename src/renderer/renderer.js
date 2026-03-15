@@ -268,7 +268,13 @@
 
     // ─── Connection Dialog ───────────────────────────────────
 
+    // Holds the display_name from a session-tree prefill so the
+    // connect-button handler can use it even though it builds
+    // a fresh config object from the form fields.
+    let dialogPrefillName = null;
+
     function showConnectDialog(prefill) {
+        dialogPrefillName = prefill?.display_name || null;
         console.log('[nterm] showConnectDialog called', { prefill, lastUsedCreds });
         const hasAuth = prefill?.username || prefill?.password || prefill?.privateKeyPath;
         const defaults = hasAuth ? {} : lastUsedCreds;
@@ -388,11 +394,17 @@
         persistCredentials();
 
         hideConnectDialog();
+
+        // Preserve original display_name from session tree if present;
+        // only fall back to user@host for ad-hoc connections.
+        const resolvedLabel = dialogPrefillName
+            || (method === 'vault'
+                ? `${config.credentialName}@${host}`
+                : `${username}@${host}`);
+
         connectSession({
             ...config,
-            display_name: method === 'vault'
-                ? `${config.credentialName}@${host}`
-                : `${username}@${host}`,
+            display_name: resolvedLabel,
         });
     });
 
@@ -990,9 +1002,43 @@
                 useVault: config.useVault,
             };
 
+            // Stash config on terminal entry for reconnect
+            const session = terminals.get(sessionId);
+            if (session) session.sshConfig = sshConfig;
+
             await window.nterm.connect(sessionId, sshConfig);
         } catch (err) {
             setStatus(`Failed: ${err}`);
+        }
+    }
+
+    // ─── Reconnect Session ──────────────────────────────────
+
+    async function reconnectSession(sessionId) {
+        const session = terminals.get(sessionId);
+        if (!session || !session.sshConfig) return;
+
+        // Guard against double-reconnect
+        if (session.status === 'connecting') return;
+
+        const config = session.sshConfig;
+        session.status = 'connecting';
+        updateTabStatus(sessionId, 'connecting');
+        setStatus(`Reconnecting to ${config.host}...`);
+
+        session.term.write('\r\n\x1b[33mReconnecting...\x1b[0m\r\n');
+
+        // Tear down old SSH session on main side
+        try { await window.nterm.disconnect(sessionId); } catch (e) { /* ignore */ }
+
+        // Re-connect with same sessionId (reuses existing tab + terminal)
+        try {
+            await window.nterm.connect(sessionId, config);
+        } catch (err) {
+            session.term.write(`\r\n\x1b[31mReconnect failed: ${err}\x1b[0m\r\n`);
+            session.status = 'error';
+            updateTabStatus(sessionId, 'error');
+            setStatus(`Reconnect failed: ${err}`);
         }
     }
 
@@ -1040,7 +1086,13 @@
         fitAddon.fit();
 
         // Keystrokes → main process → SSHManager → device
+        // If session is disconnected/errored, first keypress triggers reconnect
         term.onData((data) => {
+            const s = terminals.get(sessionId);
+            if (s && (s.status === 'disconnected' || s.status === 'error')) {
+                reconnectSession(sessionId);
+                return;
+            }
             window.nterm.send(sessionId, data);
         });
 
@@ -1179,8 +1231,12 @@
                     setStatus(`Connected: ${session.label}`);
                 } else if (payload.status === 'error') {
                     setStatus(`Error: ${payload.message}`);
+                    session.term.write(`\r\n\x1b[31m${payload.message}\x1b[0m\r\n`);
+                    session.term.write('\x1b[90mPress any key to reconnect\x1b[0m');
                 } else if (payload.status === 'disconnected') {
                     setStatus(`Disconnected: ${session.label}`);
+                    session.term.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n');
+                    session.term.write('\x1b[90mPress any key to reconnect\x1b[0m');
                 }
                 break;
 
