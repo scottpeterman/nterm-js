@@ -98,10 +98,6 @@ The terminal is xterm.js — the same engine that powers VS Code's integrated te
 |---|---|---|---|
 | [![corporate-light](screenshots/corp-light-htop.png)](screenshots/corp-light-htop.png) | [![gruvbox](screenshots/gruv-htop.png)](screenshots/gruv-htop.png) | [![session-editor](screenshots/gruv-edit-session.png)](screenshots/gruv-edit-session.png) | [![vault](screenshots/vault1.png)](screenshots/vault1.png) |
 
-| Corporate (dark) | Catppuccin Mocha | Solarized Light | Gruvbox Dark |
-|---|---|---|---|
-| [![corporate](screenshots/corporate.png)](screenshots/corporate.png) | [![mocha](screenshots/mocha.png)](screenshots/mocha.png) | [![solarized](screenshots/solarized-light.png)](screenshots/solarized-light.png) | [![gruvbox](screenshots/gruvbox-dark.png)](screenshots/gruvbox-dark.png) |
-
 ---
 
 ## Install
