@@ -59,6 +59,7 @@ Download, install, connect. That's the pitch.
 - Optional OS keychain integration (macOS Keychain, Windows DPAPI, Linux libsecret) for auto-unlock
 - Credentials injected server-side at connect time — the renderer never sees passwords or key content
 - Master password changeable; all stored credentials re-encrypted in place
+- On-disk storage: encrypted SQLite database plus an optional keychain-wrapped master password blob (see [Vault Storage](#vault-storage))
 
 **Legacy Device Support**
 
@@ -281,7 +282,31 @@ Settings file locations:
 - **macOS**: `~/Library/Application Support/nterm-js/config.json`
 - **Linux**: `~/.config/nterm-js/config.json`
 
-Vault database lives alongside the config as `vault.db`.
+Vault database lives alongside the config; see below.
+
+---
+
+## Vault Storage
+
+The vault uses two files, both in the same OS-native user data directory as `config.json`:
+
+| File | Contents | When created |
+| --- | --- | --- |
+| `vault.db` | SQLite database. Credential fields (password, SSH key, key passphrase) are AES-256-GCM encrypted at rest. Non-sensitive fields (name, username, match patterns) are plaintext for query speed. | First time you initialize the vault |
+| `vault-keychain.bin` | The vault master password, encrypted by the OS credential store via Electron's `safeStorage` (macOS Keychain, Windows DPAPI, Linux libsecret). Used to auto-unlock on launch. | Only if you check "remember password" at unlock |
+
+A few things worth knowing:
+
+- The vault master password is never written anywhere in plaintext. PBKDF2-HMAC-SHA256 (480,000 iterations) derives the actual encryption key, and a verification token pattern lets the app check the password without storing it.
+- `vault-keychain.bin` is optional. If it's absent, nterm-js prompts for the master password on every launch. Delete the file to clear auto-unlock; the vault itself is untouched.
+- Deleting `vault.db` removes all stored credentials permanently. There is no backup or recovery path — the file *is* the vault.
+- The vault is per-OS-user. There's no cloud sync; another user on the same machine cannot read it even with physical file access (they don't have your OS login to unwrap the keychain blob, and they don't have the master password to derive the key).
+
+File locations by platform:
+
+- **Windows**: `%APPDATA%\nterm-js\vault.db` and `%APPDATA%\nterm-js\vault-keychain.bin`
+- **macOS**: `~/Library/Application Support/nterm-js/vault.db` (and `vault-keychain.bin`)
+- **Linux**: `~/.config/nterm-js/vault.db` (and `vault-keychain.bin`)
 
 A unified settings UI is on the short-term roadmap; today most settings are accessible only through the connection dialog defaults or the theme selector.
 
