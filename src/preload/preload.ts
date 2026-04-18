@@ -147,6 +147,26 @@ contextBridge.exposeInMainWorld('nterm', {
         ipcRenderer.on('menu:load-sessions', () => callback());
     },
 
+onMenuCloseTab: (callback: () => void) => {
+    ipcRenderer.on('menu:close-tab', () => callback());
+},
+
+onMenuCloseAllTabs: (callback: () => void) => {
+    ipcRenderer.on('menu:close-all-tabs', () => callback());
+},
+
+onMenuTerminalZoomIn: (callback: () => void) => {
+    ipcRenderer.on('menu:terminal-zoom-in', () => callback());
+},
+
+onMenuTerminalZoomOut: (callback: () => void) => {
+    ipcRenderer.on('menu:terminal-zoom-out', () => callback());
+},
+
+onMenuTerminalZoomReset: (callback: () => void) => {
+    ipcRenderer.on('menu:terminal-zoom-reset', () => callback());
+},
+    
     // ─── Capture Events (from main process → renderer) ──────
     onCaptureError: (callback: (message: any) => void) => {
         ipcRenderer.on('capture:error', (_event, message) => callback(message));

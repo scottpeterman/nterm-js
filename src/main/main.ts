@@ -32,6 +32,14 @@ const captureHandles = new Map<string, { fd: number; filePath: string }>();
 
 let mainWindow: BrowserWindow | null = null;
 
+// ─── Exit Confirmation Flag ──────────────────────────────────
+// Set once the user has confirmed they want to proceed with closing
+// the window or quitting the app. Prevents double-prompts when one
+// path (e.g. File→Exit on Linux) triggers both 'close' and 'before-quit'.
+// Reset in the window's 'closed' handler so a reopened window (macOS
+// activate path) starts fresh.
+let exitConfirmed = false;
+
 // ─── Logging ─────────────────────────────────────────────────
 log.transports.file.level = 'info';
 log.transports.console.level = app.isPackaged ? false : 'debug';
@@ -114,6 +122,37 @@ function createWindow(): void {
     mainWindow.on('maximize', saveWindowBounds);
     mainWindow.on('unmaximize', saveWindowBounds);
 
+    // ─── Close Confirmation ──────────────────────────────────
+    // Warn before the window closes (X button, Alt+F4, Cmd+W on mac app menu,
+    // etc.) if any SSH sessions are still connected. Shares the exitConfirmed
+    // flag with the before-quit handler so the dialog never fires twice.
+    mainWindow.on('close', (e) => {
+        if (exitConfirmed) return;
+
+        const activeCount = Array.from(sessions.values())
+            .filter(s => s.isConnected())
+            .length;
+
+        if (activeCount === 0) return;
+
+        e.preventDefault();
+
+        dialog.showMessageBox(mainWindow!, {
+            type: 'warning',
+            buttons: ['Close Window', 'Cancel'],
+            defaultId: 1,
+            cancelId: 1,
+            title: 'Close Window',
+            message: `${activeCount} active SSH ${activeCount === 1 ? 'session is' : 'sessions are'} connected.`,
+            detail: 'Closing the window will disconnect all sessions. Continue?',
+        }).then(result => {
+            if (result.response === 0) {
+                exitConfirmed = true;
+                mainWindow?.close();
+            }
+        });
+    });
+
     mainWindow.on('closed', () => {
         // Close all active capture file handles
         for (const [id, handle] of captureHandles) {
@@ -126,6 +165,10 @@ function createWindow(): void {
         }
         sessions.clear();
         mainWindow = null;
+
+        // Reset confirmation flag so a re-opened window (macOS activate path)
+        // starts with a fresh check.
+        exitConfirmed = false;
     });
 
     buildMenu();
@@ -152,9 +195,22 @@ function buildMenu(): void {
                     click: () => mainWindow?.webContents.send('menu:load-sessions'),
                 },
                 { type: 'separator' },
-                isMac
-                    ? { label: 'Close Window', role: 'close' as const }
-                    : { label: 'Exit', role: 'quit' as const },
+                {
+                    label: 'Close Tab',
+                    accelerator: 'CmdOrCtrl+W',
+                    click: () => mainWindow?.webContents.send('menu:close-tab'),
+                },
+                {
+                    label: 'Close All Tabs',
+                    accelerator: 'CmdOrCtrl+Shift+W',
+                    click: () => mainWindow?.webContents.send('menu:close-all-tabs'),
+                },
+                ...(isMac
+                    ? []
+                    : [
+                          { type: 'separator' as const },
+                          { label: 'Exit', role: 'quit' as const },
+                      ]),
             ],
         },
 
@@ -176,9 +232,21 @@ function buildMenu(): void {
                 { label: 'Reload', role: 'reload' as const },
                 { label: 'Force Reload', role: 'forceReload' as const },
                 { type: 'separator' },
-                { label: 'Zoom In', role: 'zoomIn' as const },
-                { label: 'Zoom Out', role: 'zoomOut' as const },
-                { label: 'Reset Zoom', role: 'resetZoom' as const },
+                {
+                    label: 'Increase Terminal Font',
+                    accelerator: 'CmdOrCtrl+=',
+                    click: () => mainWindow?.webContents.send('menu:terminal-zoom-in'),
+                },
+                {
+                    label: 'Decrease Terminal Font',
+                    accelerator: 'CmdOrCtrl+-',
+                    click: () => mainWindow?.webContents.send('menu:terminal-zoom-out'),
+                },
+                {
+                    label: 'Reset Terminal Font',
+                    accelerator: 'CmdOrCtrl+0',
+                    click: () => mainWindow?.webContents.send('menu:terminal-zoom-reset'),
+                },
                 { type: 'separator' },
                 { label: 'Toggle Full Screen', role: 'togglefullscreen' as const },
                 { type: 'separator' },
@@ -283,6 +351,40 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+// ─── Quit Confirmation ───────────────────────────────────────
+// Warn before quitting the app if any SSH sessions are still connected.
+// The close handler on mainWindow covers the X-button / Alt-F4 path;
+// this covers explicit File→Exit / Cmd+Q / role: 'quit' invocations.
+// Both share the exitConfirmed flag declared at the top of this file.
+
+app.on('before-quit', (e) => {
+    if (exitConfirmed) return;
+
+    const activeCount = Array.from(sessions.values())
+        .filter(s => s.isConnected())
+        .length;
+
+    if (activeCount === 0) return;
+
+    e.preventDefault();
+
+    const parent = mainWindow ?? undefined;
+    dialog.showMessageBox(parent!, {
+        type: 'warning',
+        buttons: ['Quit', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Quit nterm-js',
+        message: `${activeCount} active SSH ${activeCount === 1 ? 'session is' : 'sessions are'} connected.`,
+        detail: 'Quitting will close all connections. Continue?',
+    }).then(result => {
+        if (result.response === 0) {
+            exitConfirmed = true;
+            app.quit();
+        }
+    });
+});
 
 // ─── IPC: Settings ──────────────────────────────────────────
 

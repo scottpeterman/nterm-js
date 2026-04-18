@@ -131,6 +131,14 @@
     const treeCtxRenameFolder    = document.getElementById('tree-ctx-rename-folder');
     const treeCtxDeleteFolder    = document.getElementById('tree-ctx-delete-folder');
 
+    // Tab context menu refs
+    const tabCtxMenu         = document.getElementById('tab-ctx-menu');
+    const tabCtxClose        = document.getElementById('tab-ctx-close');
+    const tabCtxCloseOthers  = document.getElementById('tab-ctx-close-others');
+    const tabCtxCloseRight   = document.getElementById('tab-ctx-close-right');
+    const tabCtxCloseAll     = document.getElementById('tab-ctx-close-all');
+    let tabCtxSessionId = null;
+
     // Session editor dialog refs
     const sessionEditorDialog = document.getElementById('session-editor-dialog');
     const sessionEditorTitle  = document.getElementById('session-editor-title');
@@ -534,6 +542,7 @@
         contextMenu.style.display = 'none';
         treeCtxMenu.style.display = 'none';
         treeFolderCtxMenu.style.display = 'none';
+        if (tabCtxMenu) tabCtxMenu.style.display = 'none';
     }
 
     function showContextMenuAt(menu, x, y) {
@@ -549,6 +558,9 @@
         if (!treeCtxMenu.contains(e.target) && !treeFolderCtxMenu.contains(e.target)) {
             treeCtxMenu.style.display = 'none';
             treeFolderCtxMenu.style.display = 'none';
+        }
+        if (tabCtxMenu && !tabCtxMenu.contains(e.target)) {
+            tabCtxMenu.style.display = 'none';
         }
     });
 
@@ -637,6 +649,28 @@
     // Sidebar header "+" button
     document.getElementById('btn-add-folder').addEventListener('click', () => {
         addFolder();
+    });
+
+    // ─── Tab Context Menu ────────────────────────────────────
+
+    tabCtxClose.addEventListener('click', () => {
+        tabCtxMenu.style.display = 'none';
+        if (tabCtxSessionId) closeTab(tabCtxSessionId);
+    });
+
+    tabCtxCloseOthers.addEventListener('click', () => {
+        tabCtxMenu.style.display = 'none';
+        if (tabCtxSessionId) closeOtherTabs(tabCtxSessionId);
+    });
+
+    tabCtxCloseRight.addEventListener('click', () => {
+        tabCtxMenu.style.display = 'none';
+        if (tabCtxSessionId) closeTabsToRight(tabCtxSessionId);
+    });
+
+    tabCtxCloseAll.addEventListener('click', () => {
+        tabCtxMenu.style.display = 'none';
+        closeAllTabs();
     });
 
     // ─── Session Editor Dialog ───────────────────────────────
@@ -1034,6 +1068,19 @@
         // Re-connect with same sessionId (reuses existing tab + terminal)
         try {
             await window.nterm.connect(sessionId, config);
+
+            // Resize sync: the new SSHManager defaults to 80x24. Mirror the
+            // rAF fit+resize pattern from createTerminalTab so the shell
+            // channel opens with the correct PTY dimensions (and, if the
+            // channel opens first, setDimensions will call channel.setWindow
+            // after the fact).
+            requestAnimationFrame(() => {
+                try { session.fitAddon.fit(); } catch {}
+                const { cols, rows } = session.term;
+                if (cols && rows) {
+                    window.nterm.resize(sessionId, cols, rows);
+                }
+            });
         } catch (err) {
             session.term.write(`\r\n\x1b[31mReconnect failed: ${err}\x1b[0m\r\n`);
             session.status = 'error';
@@ -1061,6 +1108,11 @@
             e.stopPropagation();
             closeTab(sessionId);
         });
+        tab.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            tabCtxSessionId = sessionId;
+            showContextMenuAt(tabCtxMenu, e.clientX, e.clientY);
+        });
         tabList.appendChild(tab);
 
         // Terminal pane
@@ -1086,11 +1138,14 @@
         fitAddon.fit();
 
         // Keystrokes → main process → SSHManager → device
-        // If session is disconnected/errored, first keypress triggers reconnect
+        // If session is disconnected/errored, Enter triggers reconnect;
+        // other keys are swallowed so stray keystrokes don't reconnect.
         term.onData((data) => {
             const s = terminals.get(sessionId);
             if (s && (s.status === 'disconnected' || s.status === 'error')) {
-                reconnectSession(sessionId);
+                if (data === '\r' || data === '\n') {
+                    reconnectSession(sessionId);
+                }
                 return;
             }
             window.nterm.send(sessionId, data);
@@ -1170,9 +1225,18 @@
         }
     }
 
-    function closeTab(sessionId) {
+    function closeTab(sessionId, silent = false) {
         const session = terminals.get(sessionId);
         if (!session) return;
+
+        // Prompt if an active connection would be terminated.
+        // Bulk close helpers pass silent=true because they already confirm
+        // at the top level; disconnected/error/connecting tabs close silently.
+        if (!silent && session.status === 'connected') {
+            if (!confirm(`Close "${session.label}"? The SSH session will be disconnected.`)) {
+                return;
+            }
+        }
 
         // Stop capture if active (flush buffer before disconnect)
         const capState = captureState.get(sessionId);
@@ -1199,6 +1263,66 @@
         }
 
         updateSessionCount();
+    }
+
+    // ─── Bulk Tab Close Helpers ──────────────────────────────
+
+    function closeOtherTabs(keepSessionId) {
+        const toClose = [];
+        for (const id of terminals.keys()) {
+            if (id !== keepSessionId) toClose.push(id);
+        }
+        if (toClose.length === 0) return;
+        if (!confirm(`Close ${toClose.length} other ${toClose.length === 1 ? 'tab' : 'tabs'}?`)) return;
+        toClose.forEach(id => closeTab(id, true));
+    }
+
+    function closeTabsToRight(pivotSessionId) {
+        const ids = Array.from(terminals.keys());
+        const pivotIdx = ids.indexOf(pivotSessionId);
+        if (pivotIdx === -1) return;
+        const toClose = ids.slice(pivotIdx + 1);
+        if (toClose.length === 0) return;
+        if (!confirm(`Close ${toClose.length} ${toClose.length === 1 ? 'tab' : 'tabs'} to the right?`)) return;
+        toClose.forEach(id => closeTab(id, true));
+    }
+
+    function closeAllTabs() {
+        if (terminals.size === 0) return;
+        const count = terminals.size;
+        if (!confirm(`Close all ${count} ${count === 1 ? 'tab' : 'tabs'}?`)) return;
+        Array.from(terminals.keys()).forEach(id => closeTab(id, true));
+    }
+
+    // ─── Terminal Font Zoom ──────────────────────────────────
+    // Applies to every open terminal and persists to settings.
+    // Clamped to the settings schema range (8–32).
+
+    function zoomTerminal(delta) {
+        const current = settings?.terminalFontSize || 14;
+        const next = Math.max(8, Math.min(32, current + delta));
+        if (next === current) return;
+        if (!settings) settings = {};
+        settings.terminalFontSize = next;
+        for (const [, session] of terminals) {
+            session.term.options.fontSize = next;
+            try { session.fitAddon.fit(); } catch {}
+        }
+        window.nterm.setSetting('terminalFontSize', next);
+        setStatus(`Terminal font: ${next}px`);
+    }
+
+    function resetTerminalZoom() {
+        const DEFAULT = 14;
+        if ((settings?.terminalFontSize || 14) === DEFAULT) return;
+        if (!settings) settings = {};
+        settings.terminalFontSize = DEFAULT;
+        for (const [, session] of terminals) {
+            session.term.options.fontSize = DEFAULT;
+            try { session.fitAddon.fit(); } catch {}
+        }
+        window.nterm.setSetting('terminalFontSize', DEFAULT);
+        setStatus(`Terminal font: ${DEFAULT}px`);
     }
 
     // ─── SSHManager Messages ─────────────────────────────────
@@ -1232,11 +1356,11 @@
                 } else if (payload.status === 'error') {
                     setStatus(`Error: ${payload.message}`);
                     session.term.write(`\r\n\x1b[31m${payload.message}\x1b[0m\r\n`);
-                    session.term.write('\x1b[90mPress any key to reconnect\x1b[0m');
+                    session.term.write('\x1b[90mPress Enter to reconnect\x1b[0m');
                 } else if (payload.status === 'disconnected') {
                     setStatus(`Disconnected: ${session.label}`);
                     session.term.write('\r\n\x1b[33mConnection closed.\x1b[0m\r\n');
-                    session.term.write('\x1b[90mPress any key to reconnect\x1b[0m');
+                    session.term.write('\x1b[90mPress Enter to reconnect\x1b[0m');
                 }
                 break;
 
@@ -1621,6 +1745,18 @@
         setStatus(`Loaded: ${result.filePath.split(/[\\/]/).pop()}`);
         window.nterm.setSetting('lastSessionsFile', result.filePath);
     });
+
+    window.nterm.onMenuCloseTab(() => {
+        if (activeSessionId) closeTab(activeSessionId);
+    });
+
+    window.nterm.onMenuCloseAllTabs(() => {
+        closeAllTabs();
+    });
+
+    window.nterm.onMenuTerminalZoomIn(()    => zoomTerminal(+1));
+    window.nterm.onMenuTerminalZoomOut(()   => zoomTerminal(-1));
+    window.nterm.onMenuTerminalZoomReset(() => resetTerminalZoom());
 
     // ─── Startup ─────────────────────────────────────────────
     loadSettings();
