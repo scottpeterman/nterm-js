@@ -4,7 +4,7 @@
 
 Tabbed sessions, ten themes, session capture, and a connection layer that works with every server — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
 
-[![nterm-js desktop — SSH terminal with session tree](https://github.com/scottpeterman/nterm-js/raw/main/screenshots/nterm1.gif)](/scottpeterman/nterm-js/blob/main/screenshots/nterm1.gif)
+[![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/nterm1.gif)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/nterm1.gif)
 
 ---
 
@@ -120,11 +120,11 @@ Download, install, connect. That's the pitch.
 
 | | |
 | --- | --- |
-| ![Terminal — Gruvbox Dark](/scottpeterman/nterm-js/blob/main/screenshots/gruv-htop.png) | ![Terminal — Corporate Light](/scottpeterman/nterm-js/blob/main/screenshots/corp-light-htop.png) |
+| ![Terminal — Gruvbox Dark](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/gruv-htop.png) | ![Terminal — Corporate Light](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/corp-light-htop.png) |
 | Gruvbox Dark — htop | Corporate Light — htop |
-| ![Vault unlock](/scottpeterman/nterm-js/blob/main/screenshots/vault-login.png) | ![Vault manager](/scottpeterman/nterm-js/blob/main/screenshots/vault1.png) |
+| ![Vault unlock](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/vault-login.png) | ![Vault manager](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/vault1.png) |
 | Credential vault — unlock | Credential vault — manager |
-| ![Session editor](/scottpeterman/nterm-js/blob/main/screenshots/gruv-edit-session.png) | |
+| ![Session editor](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/gruv-edit-session.png) | |
 | Session editor | |
 
 ---
