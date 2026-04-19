@@ -19,6 +19,7 @@ import {
     resetSetting,
     resetAll,
     getStorePath,
+    getDefaults,
     WindowBounds,
 } from './settings';
 
@@ -193,6 +194,11 @@ function buildMenu(): void {
                     label: 'Load Sessions...',
                     accelerator: 'CmdOrCtrl+O',
                     click: () => mainWindow?.webContents.send('menu:load-sessions'),
+                },
+                {
+                    label: 'Settings…',
+                    accelerator: 'CmdOrCtrl+,',
+                    click: () => mainWindow?.webContents.send('menu:open-settings'),
                 },
                 { type: 'separator' },
                 {
@@ -417,6 +423,10 @@ ipcMain.handle('settings:reset-all', async () => {
 
 ipcMain.handle('settings:path', async () => {
     return getStorePath();
+});
+
+ipcMain.handle('settings:get-defaults', async () => {
+    return getDefaults();
 });
 
 // ─── IPC: Load Sessions File ────────────────────────────────

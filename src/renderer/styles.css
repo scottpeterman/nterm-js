@@ -22,6 +22,9 @@
     --scrollbar:     #45475a;
     --modal-bg:      #1e1e2e;
     --modal-shadow:  rgba(0, 0, 0, 0.6);
+
+    /* Non-theme UI sizing (set by renderer from settings, not themes.js) */
+    --sidebar-font-size: 12px;
 }
 
 /* ─── Reset ────────────────────────────────────────────────── */
@@ -197,7 +200,7 @@ select {
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
 }
-#session-search { font-family: inherit; }
+#session-search { font-family: inherit; font-size: var(--sidebar-font-size); }
 
 #session-tree {
     flex: 1;
@@ -208,7 +211,7 @@ select {
 .tree-folder {
     padding: 4px 12px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: var(--sidebar-font-size);
     color: var(--text-secondary);
     cursor: pointer;
 }
@@ -216,7 +219,7 @@ select {
 
 .tree-session {
     padding: 4px 12px 4px 28px;
-    font-size: 12px;
+    font-size: var(--sidebar-font-size);
     color: var(--text-primary);
     cursor: pointer;
     display: flex;
@@ -385,6 +388,16 @@ select {
     padding: 12px 16px;
     border-top: 1px solid var(--border);
 }
+
+.reset-link {
+    margin-right: auto;
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-decoration: underline;
+    cursor: pointer;
+}
+.reset-link:hover { color: var(--red); }
 
 .form-row {
     margin-bottom: 12px;

@@ -66,6 +66,9 @@ contextBridge.exposeInMainWorld('nterm', {
     getSettingsPath: () =>
         ipcRenderer.invoke('settings:path'),
 
+    getSettingDefaults: () =>
+        ipcRenderer.invoke('settings:get-defaults'),
+
     // ─── Dialogs ─────────────────────────────────────────────
     selectKeyFile: () =>
         ipcRenderer.invoke('dialog:select-keyfile'),
@@ -165,6 +168,10 @@ onMenuTerminalZoomOut: (callback: () => void) => {
 
 onMenuTerminalZoomReset: (callback: () => void) => {
     ipcRenderer.on('menu:terminal-zoom-reset', () => callback());
+},
+
+onMenuOpenSettings: (callback: () => void) => {
+    ipcRenderer.on('menu:open-settings', () => callback());
 },
     
     // ─── Capture Events (from main process → renderer) ──────

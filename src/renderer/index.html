@@ -449,6 +449,113 @@
         </div>
     </div>
 
+    <!-- ─── Settings Dialog (modal) ───────────────────────────── -->
+    <div id="settings-dialog" class="modal-overlay" style="display:none;">
+        <div class="modal" style="max-width: 540px;">
+            <div class="modal-header">
+                <span>Settings</span>
+                <button class="modal-close" id="btn-settings-close">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+
+                <fieldset style="border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin:0 0 12px 0;">
+                    <legend style="font-size:12px; color:var(--text-secondary); padding:0 6px;">Appearance</legend>
+                    <div class="form-row">
+                        <label for="set-font-family">Terminal font</label>
+                        <select id="set-font-family" style="width:260px;">
+                            <!-- Options populated at dialog-open time by renderer.js
+                                 via refreshTerminalFontOptions(). Installed fonts
+                                 are enabled and rendered in their own face for
+                                 preview; uninstalled fonts are disabled and labeled. -->
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="set-font-size">Terminal font size (8–32)</label>
+                        <input type="number" id="set-font-size" min="8" max="32" step="1" style="width:80px;">
+                    </div>
+                    <div class="form-row">
+                        <label for="set-sidebar-font-size">Sidebar font size (10–20)</label>
+                        <input type="number" id="set-sidebar-font-size" min="10" max="20" step="1" style="width:80px;">
+                    </div>
+                    <div class="form-row">
+                        <label for="set-cursor-style">Cursor style</label>
+                        <select id="set-cursor-style" style="width:140px;">
+                            <option value="block">Block</option>
+                            <option value="underline">Underline</option>
+                            <option value="bar">Bar</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="set-cursor-blink">
+                            Blinking cursor
+                        </label>
+                    </div>
+                </fieldset>
+
+                <fieldset style="border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin:0 0 12px 0;">
+                    <legend style="font-size:12px; color:var(--text-secondary); padding:0 6px;">Terminal</legend>
+                    <div class="form-row">
+                        <label for="set-scrollback">Scrollback lines (500–100000)</label>
+                        <input type="number" id="set-scrollback" min="500" max="100000" step="500" style="width:120px;">
+                        <div id="set-scrollback-hint" style="display:none; font-size:11px; color:var(--text-muted); margin-top:4px;">
+                            Applies to new output in open terminals; already-buffered lines are unaffected.
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label for="set-paste-threshold">Paste warning threshold (lines, 1–1000)</label>
+                        <input type="number" id="set-paste-threshold" min="1" max="1000" step="1" style="width:120px;">
+                    </div>
+                </fieldset>
+
+                <fieldset style="border:1px solid var(--border); border-radius:4px; padding:10px 12px; margin:0 0 12px 0;">
+                    <legend style="font-size:12px; color:var(--text-secondary); padding:0 6px;">Connection Defaults</legend>
+                    <div class="form-row">
+                        <label for="set-default-username">Default username</label>
+                        <input type="text" id="set-default-username" spellcheck="false" autocomplete="off">
+                    </div>
+                    <div class="form-row">
+                        <label for="set-default-auth">Default auth method</label>
+                        <select id="set-default-auth" style="width:200px;">
+                            <option value="password">Password</option>
+                            <option value="keyfile">Key file</option>
+                            <option value="agent">SSH Agent</option>
+                            <option value="key-and-password">Key + Password</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="set-default-keyfile">Default private key path</label>
+                        <div class="input-with-button">
+                            <input type="text" id="set-default-keyfile" spellcheck="false" autocomplete="off"
+                                   placeholder="~/.ssh/id_ed25519">
+                            <button type="button" id="btn-settings-keyfile-browse" class="btn-secondary">Browse…</button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="set-default-legacy">
+                            Legacy mode by default
+                        </label>
+                    </div>
+                </fieldset>
+
+                <div class="form-row" style="margin-bottom:0;">
+                    <label for="set-path">Settings file</label>
+                    <div class="input-with-button">
+                        <input type="text" id="set-path" readonly spellcheck="false">
+                        <button type="button" id="btn-settings-path-copy" class="btn-secondary">Copy</button>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <a href="#" id="btn-settings-reset" class="reset-link">Reset all to defaults</a>
+                <button id="btn-settings-cancel" class="btn-secondary">Cancel</button>
+                <button id="btn-settings-save" class="btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ─── Terminal Context Menu ─────────────────────────────── -->
     <div id="context-menu" class="context-menu" style="display:none;">
         <div class="ctx-item" id="ctx-copy">Copy</div>

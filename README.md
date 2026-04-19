@@ -95,15 +95,18 @@ Download, install, connect. That's the pitch.
 - Per-tab warning when closing a connected tab individually
 - Bulk tab close (Close All, Close Others) confirms once
 
-**Persistent Settings**
+**Settings**
 
+- Unified Settings dialog (`File → Settings…` or `Cmd/Ctrl+,`) for appearance, terminal behavior, and connection defaults
+- Terminal font picker with availability detection — unavailable fonts on the current OS are labeled and disabled so users can't pick something that renders broken
+- Live apply on Save — font, cursor style, scrollback, and sidebar size changes take effect across open terminals immediately
 - Window position and size restored on launch
-- Theme preference
-- Terminal font family and size
+- Theme preference (set from the top bar)
+- Terminal font family, terminal font size, sidebar font size
 - Cursor style and blink
 - Scrollback depth
-- Sidebar width
-- Default auth method and username
+- Sidebar width (persists from splitter drag)
+- Default auth method, username, and private key path
 - Paste warning threshold
 - Last sessions file (auto-loaded on next launch)
 - Cross-platform storage: `%APPDATA%` / `~/Library/Application Support` / `~/.config`
@@ -206,7 +209,7 @@ The SSH layer runs in the Electron main process. The renderer never touches Node
 
 Vault secrets are resolved in the main process at connect time. The renderer sees credential names and usernames; it never sees passwords or key content. This applies to the credential manager UI too — the list returns metadata only.
 
-Settings are owned by the main process (`settings.ts`) and exposed to the renderer through IPC.
+Settings are owned by the main process (`settings.ts`) and exposed to the renderer through IPC. The Settings dialog takes a snapshot of current values on open, diffs against the form on Save, and pushes only changed keys — changes apply live to open terminals via xterm's option setters, with no reload required.
 
 ### Origin
 
@@ -263,8 +266,9 @@ Settings persist across launches in the OS-native config path:
 | Setting | Default | Description |
 | --- | --- | --- |
 | `theme` | `catppuccin-mocha` | One of ten shipped themes |
+| `terminalFontFamily` | Platform-specific† | Terminal font — selected from a curated list with availability detection |
 | `terminalFontSize` | `14` | Terminal font size (8–32) |
-| `terminalFontFamily` | Cascadia Code, Fira Code, Consolas | Terminal font stack |
+| `sidebarFontSize` | `12` | Session tree font size (10–20) |
 | `cursorStyle` | `block` | `block`, `underline`, or `bar` |
 | `cursorBlink` | `true` | Blinking cursor |
 | `scrollbackLines` | `10000` | Scrollback buffer depth (500–100,000) |
@@ -272,9 +276,12 @@ Settings persist across launches in the OS-native config path:
 | `pasteWarningThreshold` | `1` | Line count that triggers paste confirmation |
 | `defaultUsername` | *(empty)* | Pre-filled username in connection dialog |
 | `defaultAuthMethod` | `password` | Default auth method in connection dialog |
+| `defaultPrivateKeyPath` | *(empty)* | Default private key path for key-based auth |
 | `defaultLegacyMode` | `false` | Default legacy mode toggle |
 | `lastSessionsFile` | *(empty)* | Auto-loaded on next launch |
 | `windowBounds` | 1400×900 | Restored window position, size, maximized state |
+
+† Default terminal font is `Cascadia Mono` on Windows, `Menlo` on macOS, and `DejaVu Sans Mono` on Linux — each ships with its respective OS so first-run always renders correctly.
 
 Settings file locations:
 
@@ -307,8 +314,6 @@ File locations by platform:
 - **Windows**: `%APPDATA%\nterm-js\vault.db` and `%APPDATA%\nterm-js\vault-keychain.bin`
 - **macOS**: `~/Library/Application Support/nterm-js/vault.db` (and `vault-keychain.bin`)
 - **Linux**: `~/.config/nterm-js/vault.db` (and `vault-keychain.bin`)
-
-A unified settings UI is on the short-term roadmap; today most settings are accessible only through the connection dialog defaults or the theme selector.
 
 ---
 
@@ -358,10 +363,11 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 - [x] Terminal font zoom with persistence
 - [x] Active-connection confirmations on tab close, window close, and app quit
 - [x] Refit-on-reconnect
+- [x] Unified Settings dialog with live apply across open terminals
+- [x] Platform-aware terminal font defaults with availability detection
 
 ### Next (pre-release polish)
 
-- [ ] Unified settings dialog — backend exposes everything via IPC; UI is the missing piece
 - [ ] Packaged installers published as GitHub Releases
 - [ ] README and screenshot refresh for the Microsoft Store listing
 - [ ] Code signing (Windows, macOS)

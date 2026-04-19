@@ -30,6 +30,7 @@ export interface NtermSettings {
     // Appearance
     theme: string;
     sidebarWidth: number;
+    sidebarFontSize: number;
     terminalFontSize: number;
     terminalFontFamily: string;
 
@@ -56,11 +57,26 @@ export interface NtermSettings {
 
 // ─── Defaults ────────────────────────────────────────────────
 
+/**
+ * Default terminal font per platform. First-run experience matters —
+ * shipping 'Cascadia Mono' as the cross-platform default means Linux
+ * users see proportional fallback until they open Settings, which looks
+ * broken. Pick a font that ships with each OS.
+ */
+function defaultTerminalFont(): string {
+    switch (process.platform) {
+        case 'darwin': return 'Menlo';
+        case 'win32': return 'Cascadia Mono';
+        default:       return 'DejaVu Sans Mono';
+    }
+}
+
 const defaults: NtermSettings = {
     theme: 'catppuccin-mocha',
     sidebarWidth: 220,
+    sidebarFontSize: 12,
     terminalFontSize: 14,
-    terminalFontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+    terminalFontFamily: defaultTerminalFont(),
 
     windowBounds: {
         x: undefined,
@@ -102,6 +118,11 @@ const store: any = new Store({
             type: 'number',
             minimum: 80,
             maximum: 600,
+        },
+        sidebarFontSize: {
+            type: 'number',
+            minimum: 10,
+            maximum: 20,
         },
         terminalFontSize: {
             type: 'number',
@@ -199,4 +220,9 @@ export function resetAll(): NtermSettings {
 /** Get the filesystem path where settings are stored (for diagnostics) */
 export function getStorePath(): string {
     return store.path;
+}
+
+/** Get the schema defaults (pure; does not write to disk). */
+export function getDefaults(): NtermSettings {
+    return defaults;
 }

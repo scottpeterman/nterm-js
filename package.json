@@ -1,6 +1,6 @@
 {
   "name": "nterm-js",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A network-aware SSH terminal that understands what it sees",
   "main": "dist/main/main.js",
   "scripts": {

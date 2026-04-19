@@ -155,6 +155,23 @@
     const fedName            = document.getElementById('fed-name');
     const folderEditorError  = document.getElementById('folder-editor-error');
 
+    // Settings dialog refs
+    const settingsDialog      = document.getElementById('settings-dialog');
+    const setFontFamily       = document.getElementById('set-font-family');
+    const setFontSize         = document.getElementById('set-font-size');
+    const setSidebarFontSize  = document.getElementById('set-sidebar-font-size');
+    const setCursorStyle      = document.getElementById('set-cursor-style');
+    const setCursorBlink      = document.getElementById('set-cursor-blink');
+    const setScrollback       = document.getElementById('set-scrollback');
+    const setScrollbackHint   = document.getElementById('set-scrollback-hint');
+    const setPasteThreshold   = document.getElementById('set-paste-threshold');
+    const setDefaultUsername  = document.getElementById('set-default-username');
+    const setDefaultAuth      = document.getElementById('set-default-auth');
+    const setDefaultKeyfile   = document.getElementById('set-default-keyfile');
+    const setDefaultLegacy    = document.getElementById('set-default-legacy');
+    const setPath             = document.getElementById('set-path');
+    let   settingsSnapshot    = null;   // taken at open; diff target at save
+
     // Session tree editing state
     let treeCtxFolderIdx  = -1;   // index into sessionData[]
     let treeCtxSessionIdx = -1;   // index into sessionData[folderIdx].sessions[]
@@ -180,6 +197,11 @@
         // Apply sidebar width
         if (settings.sidebarWidth) {
             sidebar.style.width = `${settings.sidebarWidth}px`;
+        }
+
+        // Apply sidebar font size (CSS variable; cascades to tree items + filter)
+        if (settings.sidebarFontSize) {
+            document.documentElement.style.setProperty('--sidebar-font-size', `${settings.sidebarFontSize}px`);
         }
 
         // Hydrate last-used credentials from persisted defaults
@@ -428,6 +450,9 @@
         }
         if (e.key === 'Escape' && connectDialog.style.display !== 'none') {
             hideConnectDialog();
+        }
+        if (e.key === 'Escape' && settingsDialog.style.display !== 'none') {
+            hideSettingsDialog();
         }
     });
 
@@ -1727,6 +1752,332 @@
         if (e.target === aboutDialog) hideAboutDialog();
     });
 
+    // ─── Settings Dialog ─────────────────────────────────────
+    // Backend is fully plumbed (settings.ts + IPC + preload). This is the
+    // UI that exposes it to users. Apply-on-Save semantics: Cancel discards,
+    // Save diffs against the snapshot taken at open time and pushes a single
+    // setMultiple() then applies live to open terminals.
+
+    const SETTINGS_DIALOG_KEYS = [
+        'terminalFontFamily', 'terminalFontSize',
+        'sidebarFontSize',
+        'cursorStyle', 'cursorBlink',
+        'scrollbackLines', 'pasteWarningThreshold',
+        'defaultUsername', 'defaultAuthMethod',
+        'defaultPrivateKeyPath', 'defaultLegacyMode',
+    ];
+
+    // Terminal font candidates — partitioned at dialog-open time into installed
+    // (enabled) and not-installed (disabled) groups. Users on Ubuntu should not
+    // be allowed to pick Cascadia Mono and see mangled proportional fallback.
+    const TERMINAL_FONT_OPTIONS = [
+        'Cascadia Code',
+        'Cascadia Mono',
+        'Consolas',
+        'Courier New',
+        'DejaVu Sans Mono',
+        'Fira Code',
+        'JetBrains Mono',
+        'Liberation Mono',
+        'Menlo',
+        'Monaco',
+        'SF Mono',
+        'Ubuntu Mono',
+    ];
+
+    function isFontInstalled(family) {
+        // Primary check: document.fonts.check is fast and usually correct.
+        // Known to occasionally false-negative on system fonts that haven't
+        // been rendered yet, so we follow with a width-measurement fallback.
+        try {
+            if (document.fonts.check(`14px "${family}"`)) return true;
+        } catch {}
+
+        // Width fallback: if a test string renders differently in this font
+        // vs. serif, the font was actually resolved. Works for any monospace
+        // candidate since none equal serif in metrics.
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const testText = 'mmmmmmmmWWWWWWWW';
+            ctx.font = '14px serif';
+            const baseline = ctx.measureText(testText).width;
+            ctx.font = `14px "${family}", serif`;
+            const candidate = ctx.measureText(testText).width;
+            return Math.abs(candidate - baseline) > 0.5;
+        } catch {
+            return true;  // Lenient on errors — never hide an option over a check failure
+        }
+    }
+
+    /**
+     * Rebuild the terminal font <select> partitioned by availability.
+     * Preserves `desiredValue` as the selection if installed; otherwise
+     * selects the first available font. Returns whether a normalization happened.
+     */
+    function refreshTerminalFontOptions(desiredValue) {
+        const available = [];
+        const unavailable = [];
+        for (const name of TERMINAL_FONT_OPTIONS) {
+            (isFontInstalled(name) ? available : unavailable).push(name);
+        }
+
+        setFontFamily.innerHTML = '';
+
+        for (const name of available) {
+            const el = document.createElement('option');
+            el.value = name;
+            el.textContent = name;
+            // Preview each option rendered in its own face — user can visually compare
+            el.style.fontFamily = `"${name}", monospace`;
+            setFontFamily.appendChild(el);
+        }
+
+        if (available.length > 0 && unavailable.length > 0) {
+            const sep = document.createElement('option');
+            sep.disabled = true;
+            sep.textContent = '──── not installed ────';
+            setFontFamily.appendChild(sep);
+        }
+
+        for (const name of unavailable) {
+            const el = document.createElement('option');
+            el.value = name;
+            el.textContent = `${name} (not installed)`;
+            el.disabled = true;
+            setFontFamily.appendChild(el);
+        }
+
+        if (desiredValue && available.includes(desiredValue)) {
+            setFontFamily.value = desiredValue;
+            return { normalized: false };
+        }
+        if (available.length > 0) {
+            setFontFamily.value = available[0];
+            return { normalized: !!desiredValue && desiredValue !== available[0] };
+        }
+        return { normalized: false };
+    }
+
+    async function showSettingsDialog() {
+        // Always pull fresh from main — the in-memory `settings` may be stale
+        // if something else (theme picker, zoom keybinds) wrote since startup.
+        let fresh;
+        try {
+            fresh = await window.nterm.getSettings();
+        } catch (err) {
+            console.error('[nterm] Failed to load settings for dialog:', err);
+            setStatus('Error: could not load settings');
+            return;
+        }
+
+        // Snapshot the keys this dialog owns, for diff-on-save.
+        settingsSnapshot = {};
+        for (const k of SETTINGS_DIALOG_KEYS) settingsSnapshot[k] = fresh[k];
+
+        // Populate form fields
+        const { normalized } = refreshTerminalFontOptions(fresh.terminalFontFamily);
+        if (normalized) {
+            setStatus(`Terminal font '${fresh.terminalFontFamily}' not installed — showing available alternatives`);
+        }
+        setFontSize.value        = fresh.terminalFontSize ?? 14;
+        setSidebarFontSize.value = fresh.sidebarFontSize ?? 12;
+        setCursorStyle.value     = fresh.cursorStyle || 'block';
+        setCursorBlink.checked   = !!fresh.cursorBlink;
+        setScrollback.value      = fresh.scrollbackLines ?? 10000;
+        setPasteThreshold.value  = fresh.pasteWarningThreshold ?? 1;
+        setDefaultUsername.value = fresh.defaultUsername || '';
+        setDefaultAuth.value     = fresh.defaultAuthMethod || 'password';
+        setDefaultKeyfile.value  = fresh.defaultPrivateKeyPath || '';
+        setDefaultLegacy.checked = !!fresh.defaultLegacyMode;
+
+        // Path display
+        try {
+            setPath.value = await window.nterm.getSettingsPath();
+        } catch {
+            setPath.value = '(unavailable)';
+        }
+
+        // Hint is only meaningful after at least one save has changed scrollback
+        setScrollbackHint.style.display = 'none';
+
+        settingsDialog.style.display = 'flex';
+        setFontFamily.focus();
+    }
+
+    function hideSettingsDialog() {
+        settingsDialog.style.display = 'none';
+        settingsSnapshot = null;
+    }
+
+    /** Compute diff of current form values vs snapshot. Returns {} if nothing changed. */
+    function diffSettings() {
+        if (!settingsSnapshot) return {};
+        const current = {
+            terminalFontFamily:    setFontFamily.value || settingsSnapshot.terminalFontFamily,
+            terminalFontSize:      clampInt(setFontSize.value, 8, 32, settingsSnapshot.terminalFontSize),
+            sidebarFontSize:       clampInt(setSidebarFontSize.value, 10, 20, settingsSnapshot.sidebarFontSize),
+            cursorStyle:           setCursorStyle.value,
+            cursorBlink:           !!setCursorBlink.checked,
+            scrollbackLines:       clampInt(setScrollback.value, 500, 100000, settingsSnapshot.scrollbackLines),
+            pasteWarningThreshold: clampInt(setPasteThreshold.value, 1, 1000, settingsSnapshot.pasteWarningThreshold),
+            defaultUsername:       setDefaultUsername.value,
+            defaultAuthMethod:     setDefaultAuth.value,
+            defaultPrivateKeyPath: setDefaultKeyfile.value,
+            defaultLegacyMode:     !!setDefaultLegacy.checked,
+        };
+        const diff = {};
+        for (const k of SETTINGS_DIALOG_KEYS) {
+            if (current[k] !== settingsSnapshot[k]) diff[k] = current[k];
+        }
+        return diff;
+    }
+
+    function clampInt(raw, min, max, fallback) {
+        const n = parseInt(raw, 10);
+        if (Number.isNaN(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+    }
+
+    /** Apply a diff to open terminals and in-memory `settings` object. */
+    function applySettingsDiff(diff) {
+        // Update in-memory mirror so zoom keybinds and persistCredentials stay in sync
+        if (!settings) settings = {};
+        for (const k of Object.keys(diff)) settings[k] = diff[k];
+
+        // Appearance changes that live-apply to xterm
+        const touchesFont = 'terminalFontFamily' in diff || 'terminalFontSize' in diff;
+        const touchesCursor = 'cursorStyle' in diff || 'cursorBlink' in diff;
+        const touchesScrollback = 'scrollbackLines' in diff;
+
+        if (touchesFont || touchesCursor || touchesScrollback) {
+            for (const [, session] of terminals) {
+                try {
+                    if ('terminalFontFamily' in diff) session.term.options.fontFamily = diff.terminalFontFamily;
+                    if ('terminalFontSize'   in diff) session.term.options.fontSize   = diff.terminalFontSize;
+                    if ('cursorStyle'        in diff) session.term.options.cursorStyle = diff.cursorStyle;
+                    if ('cursorBlink'        in diff) session.term.options.cursorBlink = diff.cursorBlink;
+                    if ('scrollbackLines'    in diff) session.term.options.scrollback  = diff.scrollbackLines;
+                    if (touchesFont) { try { session.fitAddon.fit(); } catch {} }
+                } catch (err) {
+                    console.warn('[nterm] Failed to apply settings to a terminal:', err);
+                }
+            }
+        }
+
+        // Sidebar font size — CSS variable, takes effect instantly across the tree
+        if ('sidebarFontSize' in diff) {
+            document.documentElement.style.setProperty('--sidebar-font-size', `${diff.sidebarFontSize}px`);
+        }
+
+        // Connection defaults mirror into lastUsedCreds so the next Connect dialog
+        // opens pre-filled with the new defaults immediately.
+        if ('defaultUsername'       in diff) lastUsedCreds.username       = diff.defaultUsername;
+        if ('defaultAuthMethod'     in diff) lastUsedCreds.authMethod     = diff.defaultAuthMethod;
+        if ('defaultPrivateKeyPath' in diff) lastUsedCreds.privateKeyPath = diff.defaultPrivateKeyPath;
+        if ('defaultLegacyMode'     in diff) lastUsedCreds.legacyMode     = diff.defaultLegacyMode;
+    }
+
+    async function saveSettings() {
+        const diff = diffSettings();
+        const changedKeys = Object.keys(diff);
+
+        if (changedKeys.length === 0) {
+            hideSettingsDialog();
+            return;
+        }
+
+        try {
+            await window.nterm.setSettings(diff);
+        } catch (err) {
+            console.error('[nterm] Failed to save settings:', err);
+            setStatus('Error: could not save settings');
+            return;
+        }
+
+        applySettingsDiff(diff);
+
+        setStatus(`Settings saved (${changedKeys.length} change${changedKeys.length === 1 ? '' : 's'})`);
+        hideSettingsDialog();
+    }
+
+    /** Reset the form to defaults in the UI only — user still has to Save or Cancel. */
+    async function resetSettingsForm() {
+        let defaults;
+        try {
+            defaults = await window.nterm.getSettingDefaults();
+        } catch (err) {
+            console.error('[nterm] Failed to load defaults:', err);
+            setStatus('Error: could not load defaults');
+            return;
+        }
+
+        // Populate form — do NOT touch disk, do NOT update snapshot.
+        // Save will diff form-vs-original-snapshot and commit whatever's different.
+        // Cancel discards everything, including this reset.
+        refreshTerminalFontOptions(defaults.terminalFontFamily);
+        setFontSize.value        = defaults.terminalFontSize ?? 14;
+        setSidebarFontSize.value = defaults.sidebarFontSize ?? 12;
+        setCursorStyle.value     = defaults.cursorStyle || 'block';
+        setCursorBlink.checked   = !!defaults.cursorBlink;
+        setScrollback.value      = defaults.scrollbackLines ?? 10000;
+        setPasteThreshold.value  = defaults.pasteWarningThreshold ?? 1;
+        setDefaultUsername.value = defaults.defaultUsername || '';
+        setDefaultAuth.value     = defaults.defaultAuthMethod || 'password';
+        setDefaultKeyfile.value  = defaults.defaultPrivateKeyPath || '';
+        setDefaultLegacy.checked = !!defaults.defaultLegacyMode;
+
+        setStatus('Form reset to defaults — Save to commit or Cancel to discard');
+    }
+
+    // Wire up buttons
+    document.getElementById('btn-settings-close').addEventListener('click', hideSettingsDialog);
+    document.getElementById('btn-settings-cancel').addEventListener('click', hideSettingsDialog);
+    document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
+
+    document.getElementById('btn-settings-reset').addEventListener('click', (e) => {
+        e.preventDefault();
+        resetSettingsForm();
+    });
+
+    document.getElementById('btn-settings-keyfile-browse').addEventListener('click', async () => {
+        try {
+            const result = await window.nterm.selectKeyFile();
+            if (result && typeof result === 'string') {
+                setDefaultKeyfile.value = result;
+            } else if (result && result.filePath) {
+                setDefaultKeyfile.value = result.filePath;
+            }
+        } catch (err) {
+            console.warn('[nterm] Key file selection failed:', err);
+        }
+    });
+
+    document.getElementById('btn-settings-path-copy').addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(setPath.value || '');
+            setStatus('Settings path copied');
+        } catch (err) {
+            console.warn('[nterm] Clipboard write failed:', err);
+        }
+    });
+
+    // Outside-click to close (matches other modals)
+    settingsDialog.addEventListener('click', (e) => {
+        if (e.target === settingsDialog) hideSettingsDialog();
+    });
+
+    // Enter-to-save on text/number inputs; leave checkboxes and selects alone
+    ['set-font-size', 'set-sidebar-font-size', 'set-scrollback',
+     'set-paste-threshold', 'set-default-username', 'set-default-keyfile'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveSettings();
+            }
+        });
+    });
+
     // ─── Menu Events (from main process) ──────────────────────
 
     window.nterm.onShowAbout(() => showAboutDialog());
@@ -1757,6 +2108,8 @@
     window.nterm.onMenuTerminalZoomIn(()    => zoomTerminal(+1));
     window.nterm.onMenuTerminalZoomOut(()   => zoomTerminal(-1));
     window.nterm.onMenuTerminalZoomReset(() => resetTerminalZoom());
+
+    window.nterm.onMenuOpenSettings(() => showSettingsDialog());
 
     // ─── Startup ─────────────────────────────────────────────
     loadSettings();
