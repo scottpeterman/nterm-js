@@ -8,6 +8,8 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import log from 'electron-log';
 import { SSHManager, SSHConnectionConfig } from './sshManager';
+import { TelnetManager } from './telnetManager';
+import { TransportManager, TransportConfig } from './transportManager';
 import { registerVaultIpc, getVaultStore, enrichSshConfig, tryAutoUnlock } from './vaultIpc';
 import { probeLanAccess } from './networkCheck';
 
@@ -24,7 +26,7 @@ import {
 } from './settings';
 
 // ─── Session Registry ────────────────────────────────────────
-const sessions = new Map<string, SSHManager>();
+const sessions = new Map<string, TransportManager>();
 
 // ─── Capture File Handle Registry ────────────────────────────
 // Tracks open file descriptors for active session captures.
@@ -542,23 +544,31 @@ ipcMain.handle('sessions:save-as', async (_event, { sessions }: { sessions: any 
         return { error: msg };
     }
 });
-// ─── IPC: SSH Connect ───────────────────────────────────────
-ipcMain.handle('ssh:connect', async (event, { sessionId, config }: { sessionId: string; config: SSHConnectionConfig }) => {
+// ─── IPC: Connect (SSH / Telnet dispatch) ───────────────────
+ipcMain.handle('ssh:connect', async (event, { sessionId, config }: { sessionId: string; config: TransportConfig }) => {
     if (!mainWindow) return { error: 'No window' };
 
     try {
-        config = enrichSshConfig(config);  // inject vault creds before connect
+        const protocol = config.protocol || 'ssh';
 
+        if (protocol === 'telnet') {
+            const manager = new TelnetManager(mainWindow, sessionId, sessionId);
+            sessions.set(sessionId, manager);
+            manager.connectToHost(config);
+            log.info(`Telnet session created: ${sessionId} → ${config.host}:${config.port}`);
+            return { success: true, sessionId };
+        }
+
+        // Default: SSH (protocol === 'ssh' or absent for back-compat)
+        const sshConfig = enrichSshConfig(config as SSHConnectionConfig);  // inject vault creds
         const manager = new SSHManager(mainWindow, sessionId, sessionId);
         sessions.set(sessionId, manager);
-
-        manager.connectToHost(config);
-
+        manager.connectToHost(sshConfig);
         log.info(`SSH session created: ${sessionId} → ${config.host}:${config.port}`);
         return { success: true, sessionId };
     } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
-        log.error(`Failed to create SSH session: ${msg}`);
+        log.error(`Failed to create session: ${msg}`);
         return { error: msg };
     }
 });

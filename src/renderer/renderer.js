@@ -94,6 +94,8 @@
 
     // Dialog refs
     const connectDialog  = document.getElementById('connect-dialog');
+    const dlgProtocol    = document.getElementById('dlg-protocol');
+    const dlgSshFields   = document.getElementById('dlg-ssh-fields');
     const dlgHost        = document.getElementById('dlg-host');
     const dlgPort        = document.getElementById('dlg-port');
     const dlgUsername     = document.getElementById('dlg-username');
@@ -148,6 +150,8 @@
     const sedPort         = document.getElementById('sed-port');
     const sedCredential   = document.getElementById('sed-credential');
     const sedLegacy       = document.getElementById('sed-legacy');
+    const sedProtocol     = document.getElementById('sed-protocol');
+    const sedAuthWrapper  = document.getElementById('sed-auth-wrapper');
 
     // Folder editor dialog refs
     const folderEditorDialog = document.getElementById('folder-editor-dialog');
@@ -309,8 +313,12 @@
         const hasAuth = prefill?.username || prefill?.password || prefill?.privateKeyPath;
         const defaults = hasAuth ? {} : lastUsedCreds;
 
+        const proto = prefill?.protocol || 'ssh';
+        dlgProtocol.value = proto;
+        dlgSshFields.style.display = (proto === 'telnet') ? 'none' : '';
+
         dlgHost.value = prefill?.host || '';
-        dlgPort.value = prefill?.port || 22;
+        dlgPort.value = prefill?.port || (proto === 'telnet' ? 23 : 22);
         dlgUsername.value = prefill?.username || defaults.username || '';
         dlgPassword.value = prefill?.password || '';
         dlgKeypath.value = prefill?.privateKeyPath || defaults.privateKeyPath || '';
@@ -322,6 +330,8 @@
         connectDialog.style.display = 'flex';
         if (!dlgHost.value) {
             dlgHost.focus();
+        } else if (proto === 'telnet') {
+            dlgPort.focus();
         } else if (!dlgUsername.value) {
             dlgUsername.focus();
         } else {
@@ -367,6 +377,17 @@
 
     dlgAuthMethod.addEventListener('change', updateAuthFields);
 
+    dlgProtocol.addEventListener('change', () => {
+        const p = dlgProtocol.value;
+        if (p === 'telnet') {
+            dlgSshFields.style.display = 'none';
+            if (dlgPort.value === '22' || !dlgPort.value) dlgPort.value = 23;
+        } else {
+            dlgSshFields.style.display = '';
+            if (dlgPort.value === '23' || !dlgPort.value) dlgPort.value = 22;
+        }
+    });
+
     document.getElementById('btn-browse-key').addEventListener('click', async () => {
         const keyPath = await window.nterm.selectKeyFile();
         if (keyPath) {
@@ -380,15 +401,37 @@
 
     document.getElementById('btn-dialog-connect').addEventListener('click', () => {
         const host = dlgHost.value.trim();
-        const username = dlgUsername.value.trim();
-        const method = dlgAuthMethod.value;
+        const protocol = dlgProtocol.value || 'ssh';
 
-        if (!host || (!username && method !== 'vault')) {
+        if (!host) {
             dlgHost.focus();
             return;
         }
 
+        // ── Telnet path: minimal config, no auth ─────────
+        if (protocol === 'telnet') {
+            const port = parseInt(dlgPort.value) || 23;
+            hideConnectDialog();
+            connectSession({
+                protocol: 'telnet',
+                host,
+                port,
+                display_name: dialogPrefillName || `${host}:${port}`,
+            });
+            return;
+        }
+
+        // ── SSH path (existing behavior) ────────────────
+        const username = dlgUsername.value.trim();
+        const method = dlgAuthMethod.value;
+
+        if (!username && method !== 'vault') {
+            dlgUsername.focus();
+            return;
+        }
+
         const config = {
+            protocol: 'ssh',
             host,
             port: parseInt(dlgPort.value) || 22,
             username,
@@ -529,7 +572,10 @@
                 el.innerHTML = `<span class="dot"></span>${label}${desc}`;
 
                 el.addEventListener('dblclick', () => {
-                    if (session.password || session.credentialName || session.useVault || session.useAgent) {
+                    const proto = session.protocol || 'ssh';
+                    if (proto === 'telnet') {
+                        connectSession(session);
+                    } else if (session.password || session.credentialName || session.useVault || session.useAgent) {
                         connectSession(session);
                     } else {
                         showConnectDialog(session);
@@ -612,7 +658,10 @@
         const session = getSessionByIdx(treeCtxFolderIdx, treeCtxSessionIdx);
         if (!session) return;
 
-        if (session.password || session.credentialName || session.useVault) {
+        const proto = session.protocol || 'ssh';
+        if (proto === 'telnet') {
+            connectSession(session);
+        } else if (session.password || session.credentialName || session.useVault) {
             connectSession(session);
         } else {
             showConnectDialog(session);
@@ -715,10 +764,14 @@
             const session = getSessionByIdx(folderIdx, sessionIdx);
             if (!session) return;
 
+            const proto = session.protocol || 'ssh';
+            sedProtocol.value = proto;
+            sedAuthWrapper.style.display = (proto === 'telnet') ? 'none' : '';
+
             sedName.value = session.display_name || '';
             sedDescription.value = session.DeviceType || '';
             sedHost.value = session.host || '';
-            sedPort.value = session.port || 22;
+            sedPort.value = session.port || (proto === 'telnet' ? 23 : 22);
             sedLegacy.checked = session.legacyMode || false;
 
             // Set credential dropdown
@@ -732,6 +785,8 @@
         } else {
             // 'add' mode — blank form
             sessionEditorTitle.textContent = 'Add Session';
+            sedProtocol.value = 'ssh';
+            sedAuthWrapper.style.display = '';
             sedName.value = '';
             sedDescription.value = '';
             sedHost.value = '';
@@ -767,6 +822,18 @@
     document.getElementById('btn-session-editor-close').addEventListener('click', hideSessionEditor);
     document.getElementById('btn-session-editor-cancel').addEventListener('click', hideSessionEditor);
 
+    // Toggle auth fieldset and default port when protocol changes
+    sedProtocol.addEventListener('change', () => {
+        const p = sedProtocol.value;
+        if (p === 'telnet') {
+            sedAuthWrapper.style.display = 'none';
+            if (sedPort.value === '22' || !sedPort.value) sedPort.value = 23;
+        } else {
+            sedAuthWrapper.style.display = '';
+            if (sedPort.value === '23' || !sedPort.value) sedPort.value = 22;
+        }
+    });
+
     document.getElementById('btn-session-editor-save').addEventListener('click', () => {
         const host = sedHost.value.trim();
         if (!host) {
@@ -776,27 +843,35 @@
 
         const name = sedName.value.trim() || host;
         const credValue = sedCredential.value;
+        const protocol = sedProtocol.value || 'ssh';
 
         const sessionObj = {
             display_name: name,
             host: host,
-            port: parseInt(sedPort.value) || 22,
+            port: parseInt(sedPort.value) || (protocol === 'telnet' ? 23 : 22),
         };
+
+        // Only write protocol field if non-default (keeps existing YAML clean)
+        if (protocol !== 'ssh') {
+            sessionObj.protocol = protocol;
+        }
 
         // Only write DeviceType if non-empty
         const desc = sedDescription.value.trim();
         if (desc) sessionObj.DeviceType = desc;
 
-        // Credential mapping
-        if (credValue === '__agent__') {
-            sessionObj.useAgent = true;
-        } else if (credValue && credValue !== '') {
-            sessionObj.credentialName = credValue;
-            sessionObj.useVault = true;
-        }
+        // SSH-only fields — skip for telnet
+        if (protocol === 'ssh') {
+            if (credValue === '__agent__') {
+                sessionObj.useAgent = true;
+            } else if (credValue && credValue !== '') {
+                sessionObj.credentialName = credValue;
+                sessionObj.useVault = true;
+            }
 
-        if (sedLegacy.checked) {
-            sessionObj.legacyMode = true;
+            if (sedLegacy.checked) {
+                sessionObj.legacyMode = true;
+            }
         }
 
         if (sessionEditorMode === 'edit') {
@@ -1025,47 +1100,62 @@
 
     async function connectSession(config) {
         const sessionId = crypto.randomUUID();
-        const label = config.display_name || `${config.username}@${config.host}`;
+        const protocol = config.protocol || 'ssh';
+        const label = config.display_name ||
+            (protocol === 'telnet' ? config.host : `${config.username || ''}@${config.host}`);
 
-        // Update last-used creds from direct connects too
-        if (config.username) {
-            lastUsedCreds.username = config.username;
+        // Track last-used creds for SSH only (telnet has no pre-auth)
+        if (protocol === 'ssh') {
+            if (config.username) {
+                lastUsedCreds.username = config.username;
+            }
+            if (config.privateKeyPath) {
+                lastUsedCreds.privateKeyPath = config.privateKeyPath;
+                lastUsedCreds.authMethod = config.password ? 'key-and-password' : 'keyfile';
+            }
+            if (config.legacyMode !== undefined) {
+                lastUsedCreds.legacyMode = config.legacyMode;
+            }
+            console.log('[nterm] lastUsedCreds saved (direct):', { ...lastUsedCreds });
+            persistCredentials();
         }
-        if (config.privateKeyPath) {
-            lastUsedCreds.privateKeyPath = config.privateKeyPath;
-            lastUsedCreds.authMethod = config.password ? 'key-and-password' : 'keyfile';
-        }
-        if (config.legacyMode !== undefined) {
-            lastUsedCreds.legacyMode = config.legacyMode;
-        }
-        console.log('[nterm] lastUsedCreds saved (direct):', { ...lastUsedCreds });
-        persistCredentials();
 
         setStatus(`Connecting to ${config.host}...`);
 
         createTerminalTab(sessionId, label);
 
         try {
-            const sshConfig = {
-                host: config.host,
-                port: config.port || 22,
-                username: config.username,
-                password: config.password,
-                privateKeyPath: config.privateKeyPath,
-                passphrase: config.passphrase,
-                useAgent: config.useAgent,
-                legacyMode: config.legacyMode,
-                tryKeyboard: true,
-                // Vault fields — enrichSshConfig() in main resolves these server-side
-                credentialName: config.credentialName,
-                useVault: config.useVault,
-            };
+            let transportConfig;
+
+            if (protocol === 'telnet') {
+                transportConfig = {
+                    protocol: 'telnet',
+                    host: config.host,
+                    port: config.port || 23,
+                };
+            } else {
+                transportConfig = {
+                    protocol: 'ssh',
+                    host: config.host,
+                    port: config.port || 22,
+                    username: config.username,
+                    password: config.password,
+                    privateKeyPath: config.privateKeyPath,
+                    passphrase: config.passphrase,
+                    useAgent: config.useAgent,
+                    legacyMode: config.legacyMode,
+                    tryKeyboard: true,
+                    // Vault fields — enrichSshConfig() in main resolves these server-side
+                    credentialName: config.credentialName,
+                    useVault: config.useVault,
+                };
+            }
 
             // Stash config on terminal entry for reconnect
             const session = terminals.get(sessionId);
-            if (session) session.sshConfig = sshConfig;
+            if (session) session.sshConfig = transportConfig;
 
-            await window.nterm.connect(sessionId, sshConfig);
+            await window.nterm.connect(sessionId, transportConfig);
         } catch (err) {
             setStatus(`Failed: ${err}`);
         }
