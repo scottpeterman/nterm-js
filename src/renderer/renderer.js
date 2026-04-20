@@ -139,7 +139,27 @@
     const tabCtxCloseOthers  = document.getElementById('tab-ctx-close-others');
     const tabCtxCloseRight   = document.getElementById('tab-ctx-close-right');
     const tabCtxCloseAll     = document.getElementById('tab-ctx-close-all');
+    const tabCtxSerialSep    = document.getElementById('tab-ctx-serial-sep');
+    const tabCtxSendBreak    = document.getElementById('tab-ctx-send-break');
+    const tabCtxSendBreakBst = document.getElementById('tab-ctx-send-break-burst');
     let tabCtxSessionId = null;
+
+    // Serial dialog refs + network-fields wrapper
+    const dlgNetworkFields   = document.getElementById('dlg-network-fields');
+    const dlgSerialFields    = document.getElementById('dlg-serial-fields');
+    const dlgSerialPath      = document.getElementById('dlg-serial-path');
+    const dlgSerialBaud      = document.getElementById('dlg-serial-baud');
+    const dlgSerialDataBits  = document.getElementById('dlg-serial-databits');
+    const dlgSerialParity    = document.getElementById('dlg-serial-parity');
+    const dlgSerialStopBits  = document.getElementById('dlg-serial-stopbits');
+    const dlgSerialLineEnd   = document.getElementById('dlg-serial-line-ending');
+    const dlgSerialEcho      = document.getElementById('dlg-serial-echo');
+    const dlgSerialRtscts    = document.getElementById('dlg-serial-rtscts');
+    const btnRefreshSerial   = document.getElementById('btn-refresh-serial');
+    const dlgSerialWarning   = document.getElementById('dlg-serial-warning');
+
+    // Send Break button (topbar) — shown only when active tab is serial
+    const btnSendBreak       = document.getElementById('btn-send-break');
 
     // Session editor dialog refs
     const sessionEditorDialog = document.getElementById('session-editor-dialog');
@@ -315,7 +335,7 @@
 
         const proto = prefill?.protocol || 'ssh';
         dlgProtocol.value = proto;
-        dlgSshFields.style.display = (proto === 'telnet') ? 'none' : '';
+        applyProtocolVisibility(proto);
 
         dlgHost.value = prefill?.host || '';
         dlgPort.value = prefill?.port || (proto === 'telnet' ? 23 : 22);
@@ -328,7 +348,11 @@
         updateAuthFields();
 
         connectDialog.style.display = 'flex';
-        if (!dlgHost.value) {
+        if (proto === 'serial') {
+            // Focus the port dropdown once the scan completes; port list is
+            // populated async by applyProtocolVisibility().
+            dlgSerialPath.focus();
+        } else if (!dlgHost.value) {
             dlgHost.focus();
         } else if (proto === 'telnet') {
             dlgPort.focus();
@@ -378,15 +402,84 @@
     dlgAuthMethod.addEventListener('change', updateAuthFields);
 
     dlgProtocol.addEventListener('change', () => {
-        const p = dlgProtocol.value;
-        if (p === 'telnet') {
-            dlgSshFields.style.display = 'none';
-            if (dlgPort.value === '22' || !dlgPort.value) dlgPort.value = 23;
-        } else {
-            dlgSshFields.style.display = '';
-            if (dlgPort.value === '23' || !dlgPort.value) dlgPort.value = 22;
-        }
+        applyProtocolVisibility(dlgProtocol.value || 'ssh');
     });
+
+    function applyProtocolVisibility(proto) {
+        const isSerial = (proto === 'serial');
+        const isTelnet = (proto === 'telnet');
+
+        dlgNetworkFields.style.display = isSerial ? 'none' : '';
+        dlgSerialFields.style.display  = isSerial ? '' : 'none';
+        dlgSshFields.style.display     = (isSerial || isTelnet) ? 'none' : '';
+
+        // Default-port toggling for ssh ↔ telnet (serial has no TCP port)
+        if (!isSerial) {
+            if (isTelnet && (dlgPort.value === '22' || !dlgPort.value)) dlgPort.value = 23;
+            else if (!isTelnet && (dlgPort.value === '23' || !dlgPort.value)) dlgPort.value = 22;
+        }
+
+        if (isSerial) {
+            // Scan ports when switching to serial (shows "scanning..." then fills)
+            refreshSerialPorts(true);
+        }
+    }
+
+    // ─── Serial Port Enumeration ─────────────────────────────
+    // Called when the dialog switches to serial and from the refresh button.
+    // Preserves the current selection across refreshes when the port still
+    // exists (e.g. plugging in a second dongle shouldn't reset selection).
+
+    async function refreshSerialPorts(preserveSelection = true) {
+        const previous = preserveSelection ? dlgSerialPath.value : '';
+        dlgSerialPath.innerHTML = '<option value="">(scanning...)</option>';
+        if (dlgSerialWarning) {
+            dlgSerialWarning.style.display = 'none';
+            dlgSerialWarning.textContent = '';
+        }
+        try {
+            const result = await window.nterm.listSerialPorts(false);
+
+            // Surface any platform warning (e.g. Linux dialout group missing)
+            if (result?.warning && dlgSerialWarning) {
+                dlgSerialWarning.textContent = '⚠  ' + result.warning;
+                dlgSerialWarning.style.display = 'block';
+            }
+
+            if (result?.error) {
+                console.error('[nterm] serial port enumeration error:', result.error);
+                dlgSerialPath.innerHTML = `<option value="">(error: ${result.error})</option>`;
+                return;
+            }
+            const ports = result?.ports || [];
+            dlgSerialPath.innerHTML = '';
+            if (ports.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '(no serial ports detected)';
+                opt.disabled = true;
+                dlgSerialPath.appendChild(opt);
+                return;
+            }
+            for (const p of ports) {
+                const opt = document.createElement('option');
+                opt.value = p.path;
+                const label = p.manufacturer
+                    ? `${p.path} — ${p.manufacturer}${p.serialNumber ? ` (${p.serialNumber})` : ''}`
+                    : p.path;
+                opt.textContent = label;
+                dlgSerialPath.appendChild(opt);
+            }
+            if (previous && ports.some(p => p.path === previous)) {
+                dlgSerialPath.value = previous;
+            }
+        } catch (err) {
+            console.error('[nterm] serial port enumeration failed:', err);
+            dlgSerialPath.innerHTML = '<option value="">(enumeration failed)</option>';
+        }
+    }
+
+    btnRefreshSerial?.addEventListener('click', () => refreshSerialPorts(true));
 
     document.getElementById('btn-browse-key').addEventListener('click', async () => {
         const keyPath = await window.nterm.selectKeyFile();
@@ -400,8 +493,34 @@
     document.getElementById('btn-dialog-cancel').addEventListener('click', hideConnectDialog);
 
     document.getElementById('btn-dialog-connect').addEventListener('click', () => {
-        const host = dlgHost.value.trim();
         const protocol = dlgProtocol.value || 'ssh';
+
+        // ── Serial path: no host, uses port dropdown ────
+        if (protocol === 'serial') {
+            const path = dlgSerialPath.value;
+            if (!path) {
+                dlgSerialPath.focus();
+                setStatus('Select a serial port first');
+                return;
+            }
+            const baudRate = parseInt(dlgSerialBaud.value, 10) || 9600;
+            hideConnectDialog();
+            connectSession({
+                protocol: 'serial',
+                path,
+                baudRate,
+                dataBits:  parseInt(dlgSerialDataBits.value, 10) || 8,
+                parity:    dlgSerialParity.value || 'none',
+                stopBits:  parseInt(dlgSerialStopBits.value, 10) || 1,
+                rtscts:    dlgSerialRtscts.checked,
+                localEcho: dlgSerialEcho.checked,
+                lineEnding: dlgSerialLineEnd.value || 'cr',
+                display_name: dialogPrefillName || `${path} @ ${baudRate}`,
+            });
+            return;
+        }
+
+        const host = dlgHost.value.trim();
 
         if (!host) {
             dlgHost.focus();
@@ -745,6 +864,37 @@
     tabCtxCloseAll.addEventListener('click', () => {
         tabCtxMenu.style.display = 'none';
         closeAllTabs();
+    });
+
+    tabCtxSendBreak?.addEventListener('click', () => {
+        tabCtxMenu.style.display = 'none';
+        if (tabCtxSessionId) window.nterm.serialSendBreak(tabCtxSessionId, false);
+    });
+
+    tabCtxSendBreakBst?.addEventListener('click', () => {
+        tabCtxMenu.style.display = 'none';
+        if (tabCtxSessionId) window.nterm.serialSendBreak(tabCtxSessionId, true);
+    });
+
+    // ─── Send Break: topbar button + visibility ──────────────
+    // Shown only when the active tab is a serial session. Click → 1.5s
+    // pulse; Shift+click → 5× burst (for USB-serial adapters that silently
+    // drop short BREAKs).
+
+    function isSerialSession(sessionId) {
+        const s = terminals.get(sessionId);
+        return s?.sshConfig?.protocol === 'serial';
+    }
+
+    function updateSerialControls() {
+        const visible = activeSessionId && isSerialSession(activeSessionId);
+        if (btnSendBreak) btnSendBreak.style.display = visible ? '' : 'none';
+    }
+
+    btnSendBreak?.addEventListener('click', (e) => {
+        if (!activeSessionId || !isSerialSession(activeSessionId)) return;
+        const burst = e.shiftKey;
+        window.nterm.serialSendBreak(activeSessionId, burst);
     });
 
     // ─── Session Editor Dialog ───────────────────────────────
@@ -1102,9 +1252,11 @@
         const sessionId = crypto.randomUUID();
         const protocol = config.protocol || 'ssh';
         const label = config.display_name ||
-            (protocol === 'telnet' ? config.host : `${config.username || ''}@${config.host}`);
+            (protocol === 'serial' ? `${config.path} @ ${config.baudRate || 9600}` :
+             protocol === 'telnet' ? config.host :
+             `${config.username || ''}@${config.host}`);
 
-        // Track last-used creds for SSH only (telnet has no pre-auth)
+        // Track last-used creds for SSH only (telnet / serial have no pre-auth)
         if (protocol === 'ssh') {
             if (config.username) {
                 lastUsedCreds.username = config.username;
@@ -1120,14 +1272,29 @@
             persistCredentials();
         }
 
-        setStatus(`Connecting to ${config.host}...`);
+        setStatus(protocol === 'serial'
+            ? `Opening ${config.path}...`
+            : `Connecting to ${config.host}...`);
 
         createTerminalTab(sessionId, label);
 
         try {
             let transportConfig;
 
-            if (protocol === 'telnet') {
+            if (protocol === 'serial') {
+                transportConfig = {
+                    protocol: 'serial',
+                    path: config.path,
+                    baudRate: config.baudRate || 9600,
+                    dataBits: config.dataBits || 8,
+                    parity:   config.parity || 'none',
+                    stopBits: config.stopBits || 1,
+                    rtscts:   !!config.rtscts,
+                    xon:      !!config.xon,
+                    localEcho:  !!config.localEcho,
+                    lineEnding: config.lineEnding || 'cr',
+                };
+            } else if (protocol === 'telnet') {
                 transportConfig = {
                     protocol: 'telnet',
                     host: config.host,
@@ -1156,6 +1323,9 @@
             if (session) session.sshConfig = transportConfig;
 
             await window.nterm.connect(sessionId, transportConfig);
+
+            // If this is the active tab, refresh the topbar break button visibility
+            updateSerialControls();
         } catch (err) {
             setStatus(`Failed: ${err}`);
         }
@@ -1226,6 +1396,13 @@
         tab.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             tabCtxSessionId = sessionId;
+
+            // Show serial-specific entries only for serial tabs
+            const isSerial = isSerialSession(sessionId);
+            if (tabCtxSerialSep)    tabCtxSerialSep.style.display    = isSerial ? '' : 'none';
+            if (tabCtxSendBreak)    tabCtxSendBreak.style.display    = isSerial ? '' : 'none';
+            if (tabCtxSendBreakBst) tabCtxSendBreakBst.style.display = isSerial ? '' : 'none';
+
             showContextMenuAt(tabCtxMenu, e.clientX, e.clientY);
         });
         tabList.appendChild(tab);
@@ -1338,6 +1515,7 @@
             activeSessionId = sessionId;
             requestAnimationFrame(() => session.fitAddon.fit());
         }
+        updateSerialControls();
     }
 
     function closeTab(sessionId, silent = false) {
@@ -1375,6 +1553,7 @@
         } else {
             activeSessionId = null;
             welcome.style.display = 'flex';
+            updateSerialControls();
         }
 
         updateSessionCount();

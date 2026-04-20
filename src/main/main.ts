@@ -9,6 +9,7 @@ import * as yaml from 'js-yaml';
 import log from 'electron-log';
 import { SSHManager, SSHConnectionConfig } from './sshManager';
 import { TelnetManager } from './telnetManager';
+import { SerialManager, SerialConnectionConfig } from './serialManager';
 import { TransportManager, TransportConfig } from './transportManager';
 import { registerVaultIpc, getVaultStore, enrichSshConfig, tryAutoUnlock } from './vaultIpc';
 import { probeLanAccess } from './networkCheck';
@@ -559,6 +560,15 @@ ipcMain.handle('ssh:connect', async (event, { sessionId, config }: { sessionId: 
             return { success: true, sessionId };
         }
 
+        if (protocol === 'serial') {
+            const manager = new SerialManager(mainWindow, sessionId, sessionId);
+            sessions.set(sessionId, manager);
+            const sConfig = config as SerialConnectionConfig;
+            manager.connectToHost(sConfig);
+            log.info(`Serial session created: ${sessionId} → ${sConfig.path} @ ${sConfig.baudRate || 9600}`);
+            return { success: true, sessionId };
+        }
+
         // Default: SSH (protocol === 'ssh' or absent for back-compat)
         const sshConfig = enrichSshConfig(config as SSHConnectionConfig);  // inject vault creds
         const manager = new SSHManager(mainWindow, sessionId, sessionId);
@@ -626,6 +636,44 @@ ipcMain.handle('ssh:list-sessions', async () => {
         list.push({ sessionId: id, ...manager.getDebugInfo() });
     }
     return list;
+});
+
+// ─── IPC: List Serial Ports ─────────────────────────────────
+// Returns { ports: [...], warning?: string } or { error: string }.
+// The optional `warning` field surfaces platform-specific issues that
+// won't cause enumeration to fail but will cause connect to fail —
+// most notably "user not in dialout group" on Linux.
+ipcMain.handle('serial:list-ports', async (_event, { showAll }: { showAll?: boolean } = {}) => {
+    try {
+        const ports = await SerialManager.listPorts(!!showAll);
+        const response: { ports: any[]; warning?: string } = { ports };
+
+        // Linux: pre-flight permission check so the UI can warn about
+        // missing group membership before the user tries to connect.
+        const access = SerialManager.checkLinuxSerialAccess();
+        if (!access.hasAccess && access.missingGroup) {
+            response.warning = access.needsRelogin
+                ? `You're in the "${access.missingGroup}" group but this login session doesn't know yet. Log out and back in — or run "newgrp ${access.missingGroup}" in a shell and relaunch nterm-js — to pick up the change.`
+                : `Your user is not in the "${access.missingGroup}" group, so serial ports will fail to open with permission denied.\nFix: sudo usermod -a -G ${access.missingGroup} $USER   (then log out and back in)`;
+        }
+
+        return response;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        log.error(`Serial port enumeration failed: ${msg}`);
+        return { error: msg };
+    }
+});
+
+// ─── IPC: Send Serial Break ─────────────────────────────────
+// burst=false → one 1.5s pulse (standard ROMMON drop)
+// burst=true  → five 500ms pulses with 100ms gaps (stubborn USB-serial)
+ipcMain.handle('serial:send-break', async (_event, { sessionId, burst }: { sessionId: string; burst?: boolean }) => {
+    const manager = sessions.get(sessionId);
+    if (!manager) return { error: 'Session not found' };
+    if (!(manager instanceof SerialManager)) return { error: 'Not a serial session' };
+    manager.sendBreak(burst ? 5 : 1);
+    return { success: true };
 });
 
 // ─── IPC: Open DevTools ─────────────────────────────────────

@@ -1,8 +1,8 @@
 # nterm-js
 
-**A modern SSH and telnet terminal with a built-in encrypted credential vault.**
+**A modern SSH, telnet, and serial terminal with a built-in encrypted credential vault.**
 
-Tabbed sessions, ten themes, session capture, and a connection layer that works with every server — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
+Tabbed sessions, ten themes, session capture, and a connection layer that works with every server or console port — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
 
 [![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/nterm1.gif)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/nterm1.gif)
 
@@ -10,14 +10,14 @@ Tabbed sessions, ten themes, session capture, and a connection layer that works 
 
 ## Why nterm-js
 
-Most free SSH clients ask you to pick two of three: good terminal, good session management, good credential handling. The ones that have all three are usually either paid, enterprise-targeted, or written for a specific platform.
+Most free SSH clients ask you to pick two of three: good terminal, good session management, good credential handling. The ones that have all three are usually either paid, enterprise-targeted, or written for a specific platform. Add a decent console-cable / serial experience on top and the field narrows to almost nothing.
 
 nterm-js bundles them in one standalone app:
 
 * **xterm.js terminal** — the same engine that powers VS Code's integrated terminal. Full VT100/ANSI, 256-color, Unicode, box-drawing. Renders htop, vim, and 30-year-old Cisco menus equally well.
 * **AES-256-GCM credential vault** — built-in, SQLite-backed, unlocked per session or cached in the OS keychain. Credentials never cross process boundaries to the renderer.
 * **Legacy device support** — RSA SHA-1, diffie-hellman-group-exchange-sha1, aes128-cbc. Connects to servers that modern OpenSSH has long since refused.
-* **Multi-protocol transport** — SSH and telnet side-by-side in the same session tree. Telnet covers GNS3 consoles, reverse telnet through terminal servers, and legacy telnet-only gear.
+* **Multi-protocol transport** — SSH, telnet, and serial side-by-side in the same session tree. Telnet covers GNS3 consoles and reverse-telnet through terminal servers. Serial covers USB-to-serial console cables, crash carts, and ROMMON / bootloader recovery on real hardware.
 * **Session management** — folder hierarchy, YAML files, search, and persistent per-tab state.
 
 Download, install, connect. That's the pitch.
@@ -30,7 +30,7 @@ Download, install, connect. That's the pitch.
 
 * xterm.js rendering — full color, resize, configurable scrollback
 * Tab-per-session with live connection status indicators (connecting / connected / disconnected / error)
-* Tab context menu: Close, Close Others, Close to the Right, Close All
+* Tab context menu: Close, Close Others, Close to the Right, Close All (plus Send Break entries on serial tabs)
 * Terminal font zoom (Cmd/Ctrl+= / Cmd/Ctrl+- / Cmd/Ctrl+0) — per-terminal, persists across sessions
 * Multi-line paste warning with preview and confirmation
 * Configurable font size, font family, and cursor style
@@ -41,8 +41,9 @@ Download, install, connect. That's the pitch.
 
 * **SSH** — ssh2-based, full auth chain (password, key file, agent, keyboard-interactive), legacy cipher fallback, shell → exec channel fallback for devices that reject shell requests
 * **Telnet** — net.Socket-based, RFC 854 IAC negotiation (ECHO / SGA / NAWS), CR/LF → CRLF line mode per SecureCRT default, 0xFF escape on write
-* Protocol selectable per-session in the session editor or ad-hoc from the quick-connect dialog
-* Session YAML gets an optional `protocol: telnet` field — absent or `ssh` keeps existing files working unchanged
+* **Serial** — node-serialport-based, USB-to-serial and real UART support. Configurable baud / data bits / parity / stop bits / flow control (RTS-CTS or XON-XOFF). Per-connection line-ending selection (CR default for network gear, CRLF / LF / raw as alternatives), optional local echo, and a **Send Break** control for Cisco ROMMON and password-recovery workflows (1.5s pulse on click, 5× 500ms burst on Shift+click for stubborn CH340 / FTDI-clone adapters). Platform-aware port enumeration hides the 32 `/dev/ttyS` stubs on Linux and Bluetooth-audio noise on macOS; the dialog proactively warns on Linux if the user isn't in `dialout` / `uucp` with a copy-pasteable `usermod` fix.
+* Protocol selectable per-session in the session editor or ad-hoc from the quick-connect dialog (SSH and telnet); serial is quick-connect only because port paths aren't portable across machines
+* Session YAML gets an optional `protocol: telnet` field — absent or `ssh` keeps existing files working unchanged. Serial sessions are not persisted to YAML.
 * One xterm.js instance per tab regardless of transport; terminals don't know or care what's underneath
 
 **Themes**
@@ -59,7 +60,7 @@ Download, install, connect. That's the pitch.
 * Default key discovery (`~/.ssh/id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`)
 * Combined key + password authentication
 
-Telnet auth is interactive — type username / password at the device prompt. No pre-connect auth state to manage.
+Telnet auth is interactive — type username / password at the device prompt. No pre-connect auth state to manage. Serial has no auth concept at all; you type at whatever prompt the device shows on the wire.
 
 **Credential Vault**
 
@@ -71,6 +72,8 @@ Telnet auth is interactive — type username / password at the device prompt. No
 * Credentials injected server-side at connect time — the renderer never sees passwords or key content
 * Master password changeable; all stored credentials re-encrypted in place
 * On-disk storage: encrypted SQLite database plus an optional keychain-wrapped master password blob (see [Vault Storage](#vault-storage))
+
+The vault is SSH-only. Telnet and serial have no pre-auth and never touch it.
 
 **Legacy Device Support (SSH)**
 
@@ -88,13 +91,14 @@ Telnet auth is interactive — type username / password at the device prompt. No
 * Session search and filter
 * Session editor (add, edit, duplicate, delete) with protocol selector
 * Folder editor (add, rename, delete)
-* Quick-connect dialog with protocol selector and SSH auth method chooser
+* Quick-connect dialog with protocol selector, SSH auth method chooser, and serial port discovery
 * Credential selector bound to the vault
 * Native file browser for key selection
 
 **Session Capture**
 
 * Per-tab capture to file, ANSI-stripped
+* Works identically across SSH, telnet, and serial — the capture layer sits above the transport
 * Native file picker for capture destination
 * Live capturing indicator on the tab
 * Auto-flush on tab close
@@ -157,7 +161,11 @@ npm install
 npm start
 ```
 
-Requires Node.js 20+ and npm.
+Requires Node.js 20+ and npm. The serial transport uses `serialport`, which is a native module — on first install, `@electron/rebuild` compiles its bindings against your Electron version automatically. If it doesn't, run:
+
+```
+npx electron-rebuild -f -w serialport
+```
 
 ### Building Installers
 
@@ -188,6 +196,12 @@ src/
 │   │                        #   RFC 854 IAC negotiation
 │   │                        #   NAWS window-size updates
 │   │                        #   CRLF line-mode normalization
+│   ├── serialManager.ts     # Serial transport (node-serialport)
+│   │                        #   USB-to-serial + real UART support
+│   │                        #   break signal (ROMMON / password recovery)
+│   │                        #   line-ending normalization (CR/CRLF/LF/raw)
+│   │                        #   platform-aware port enumeration
+│   │                        #   Linux dialout pre-check
 │   ├── settings.ts          # Persistent settings (electron-store)
 │   ├── vaultCrypto.ts       # AES-256-GCM + PBKDF2 primitives
 │   ├── vaultStore.ts        # SQLite-backed encrypted credential storage
@@ -210,9 +224,9 @@ src/
 
 `TransportManager` is an abstract base class that owns the transport-agnostic plumbing: IPC message formatting and throttling, the connection state machine, dimension tracking, byte counters, and diagnostics. Subclasses implement four hooks: `performConnect`, `performWrite`, `performResize`, `performDisconnect`.
 
-`SSHManager` and `TelnetManager` each extend it. The renderer and IPC layer don't know or care which subclass is at the other end — they speak a single message vocabulary (`output`, `connectionStatus`, `error`, `input`, `resize`, etc.) routed through the same `ssh:message` channel.
+`SSHManager`, `TelnetManager`, and `SerialManager` each extend it. The renderer and IPC layer don't know or care which subclass is at the other end — they speak a single message vocabulary (`output`, `connectionStatus`, `error`, `input`, `resize`, etc.) routed through the same `ssh:message` channel.
 
-Adding a new transport (e.g. serial) is a new subclass plus a dispatcher branch in `main.ts`. No changes to the renderer, the session YAML schema, or the settings layer.
+Adding a new transport is a new subclass plus a dispatcher branch in `main.ts`. No changes to the renderer, the session YAML schema, or the settings layer. Serial landed this way — one subclass, one dispatch branch, plus two thin IPC additions (`serial:list-ports`, `serial:send-break`) for the port-discovery and break-signal paths that don't fit the generic transport vocabulary.
 
 ### Data Flow
 
@@ -220,8 +234,8 @@ Adding a new transport (e.g. serial) is a new subclass plus a dispatcher branch 
  Keystrokes                                    Device Output
      │                                              │
      ▼                                              ▼
- xterm.js ──► preload IPC ──► main.ts ──► TransportManager ──► ssh2 / net.Socket
- (renderer)   (bridge)        (dispatch) (SSH or Telnet)        (wire)
+ xterm.js ──► preload IPC ──► main.ts ──► TransportManager ──► ssh2 / net.Socket / serialport
+ (renderer)   (bridge)        (dispatch) (SSH / Telnet / Serial) (wire)
                                               │
                                               ▼
                                          ssh:message IPC
@@ -232,7 +246,7 @@ Adding a new transport (e.g. serial) is a new subclass plus a dispatcher branch 
 
 The transport layer runs in the Electron main process. The renderer never touches Node.js or the network — it sends keystrokes through IPC and receives output through a single `ssh:message` channel. Context isolation is enforced.
 
-Vault secrets are resolved in the main process at connect time (SSH only — telnet has no pre-auth). The renderer sees credential names and usernames; it never sees passwords or key content. This applies to the credential manager UI too — the list returns metadata only.
+Vault secrets are resolved in the main process at connect time (SSH only — telnet and serial have no pre-auth). The renderer sees credential names and usernames; it never sees passwords or key content. This applies to the credential manager UI too — the list returns metadata only.
 
 Settings are owned by the main process (`settings.ts`) and exposed to the renderer through IPC. The Settings dialog takes a snapshot of current values on open, diffs against the form on Save, and pushes only changed keys — changes apply live to open terminals via xterm's option setters, with no reload required.
 
@@ -243,7 +257,7 @@ The SSH engine was ported from the [Terminal Telemetry VS Code extension](https:
 1. `vscode.Webview.postMessage()` → `BrowserWindow.webContents.send()`
 2. VS Code logger → `electron-log`
 
-All auth logic, legacy device handling, exec channel fallback, and diagnostic output carried over unchanged. It later became the first subclass of `TransportManager` when the telnet support landed, but the SSH-specific code paths were not modified in that refactor.
+All auth logic, legacy device handling, exec channel fallback, and diagnostic output carried over unchanged. It later became the first subclass of `TransportManager` when the telnet support landed, but the SSH-specific code paths were not modified in that refactor. The telnet and serial managers were written from scratch against the `TransportManager` contract once it had been proven against SSH.
 
 The vault is a direct port of the Python vault from the [nterm-ng](https://github.com/scottpeterman/nterm-ng) project — same schema, same encryption parameters, same score-based resolver — with AES-256-GCM substituted for Fernet (stronger cipher, zero external dependencies).
 
@@ -286,6 +300,8 @@ YAML session files are compatible with nterm and TerminalTelemetry:
 
 The `protocol` field is optional and defaults to `ssh` when absent — existing session files work unchanged. Set it to `telnet` for GNS3 consoles, reverse telnet, or legacy telnet-only devices. When `protocol: telnet`, auth fields (`username`, `password`, `credential_name`, `use_vault`, `use_agent`, `legacyMode`) are ignored.
 
+Serial sessions deliberately aren't persisted to YAML. `/dev/ttyUSB0` on Linux, `/dev/cu.usbserial-XXXX` on macOS, and `COM3` on Windows all name the same physical adapter on the same machine, but the enumeration order shifts whenever you plug dongles in different order. A shared sessions.yaml with a baked-in serial path is a footgun — so serial is exclusively a quick-connect flow.
+
 Three resolution modes for SSH credentials:
 
 1. Explicit `credential_name` — look up by name in the vault
@@ -297,6 +313,36 @@ A Python script is included for converting JSON session exports:
 ```
 python convert_json.py sessions.json -o sessions.yaml
 ```
+
+---
+
+## Serial Transport
+
+Serial is built for the things you use a console cable for: network gear, crash carts, ROMMON / bootloader recovery, and generic USB-serial devices. Everything below is configurable per-connection in the quick-connect dialog.
+
+**Baud / framing.** 9600 8N1 by default (the network-gear standard). Baud dropdown covers 2400 / 4800 / 9600 / 19200 / 38400 / 57600 / 115200 / 230400. Framing is configurable: 7 or 8 data bits, none / even / odd parity, 1 or 2 stop bits. RTS-CTS hardware flow control is available as a checkbox.
+
+**Line endings.** xterm.js emits a bare `\r` on Enter. Network console firmware is unanimously happy with bare CR and sometimes unhappy with CRLF (double-newlines on older IOS). Default is `CR (network gear)`, with `CRLF`, `LF`, and `raw` (pass-through) as alternatives for unusual devices.
+
+**Local echo.** Off by default. Some devices (raw UARTs, certain bootloaders) don't echo what you type. Flip on "Local echo" and the terminal mirrors each write locally after line-ending normalization, so what you see matches what's on the wire.
+
+**Send Break.** Cisco ROMMON and password-recovery workflows need an RS-232 BREAK. When a serial tab is active, a **Send Break** button appears in the top bar. Click for a single 1.5s pulse (the standard). Shift+click for a 5× burst of 500ms pulses — some USB-serial adapters (CH340, certain FTDI clones) silently drop short BREAKs, and the burst is what makes them work. Both options are also in the tab's right-click menu.
+
+**Platform-aware port discovery.** The quick-connect dialog populates the port dropdown the moment you switch to Serial, and there's a refresh button for hot-plug scenarios.
+
+* **macOS** — `/dev/tty.*` paths are rewritten to `/dev/cu.*`. The `cu` ("calling unit") device is what you want for outgoing / interactive use; `tty` is for incoming connections and blocks on DCD, which usually isn't what a console user wants. Bluetooth-audio devices (Jabra, AirPods, Beats, Bluetooth-Incoming-Port, debug-console) are filtered out because they're technically serial devices but never something you want to connect to.
+* **Linux** — the kernel enumerates `/dev/ttyS0..ttyS31` as serial devices whether or not real UART hardware is behind them. On modern laptops those 32 entries are all phantom stubs; on servers with real 16550 UARTs, udev populates `manufacturer` / `vendorId` fields. We hide `ttyS*` entries with no udev metadata — real hardware survives, phantom stubs get filtered out.
+* **Windows** — COM ports only exist when a driver is behind them, so no filtering is applied.
+
+There's an escape hatch at the API layer (`SerialPort.listPorts({ showAll: true })`) for edge cases where a legit port gets filtered.
+
+**Linux dialout pre-check.** Serial devices on Linux are group-owned by `dialout` (Debian / Ubuntu) or `uucp` (Arch / Fedora). Users not in the group hit `EACCES` on port open. Rather than wait for the failure and echo a hint into the terminal, the quick-connect dialog inspects the running process's group list on open and surfaces an amber warning banner above the port dropdown, with the exact `usermod` command in monospace so it's copy-pasteable. The check distinguishes three states:
+
+* Process has the group → no banner, all clear
+* User is listed in `/etc/group` but the running session hasn't picked it up → banner says to log out / log back in (or use `newgrp`)
+* User isn't in any serial group at all → banner gives the `sudo usermod -a -G dialout $USER` fix
+
+**Reconnect.** Same as SSH and telnet: the transport config is stashed on the terminal entry when the session is created, and pressing Enter on a disconnected serial tab replays it. If the USB dongle was unplugged and came back on a different path (`/dev/ttyUSB1` instead of `/dev/ttyUSB0`), reconnect fails cleanly with a "Port not found" hint; close and reconnect through the dialog to pick the new path.
 
 ---
 
@@ -349,7 +395,7 @@ A few things worth knowing:
 * `vault-keychain.bin` is optional. If it's absent, nterm-js prompts for the master password on every launch. Delete the file to clear auto-unlock; the vault itself is untouched.
 * Deleting `vault.db` removes all stored credentials permanently. There is no backup or recovery path — the file *is* the vault.
 * The vault is per-OS-user. There's no cloud sync; another user on the same machine cannot read it even with physical file access (they don't have your OS login to unwrap the keychain blob, and they don't have the master password to derive the key).
-* The vault is SSH-only. Telnet sessions have no pre-auth and never touch the vault.
+* The vault is SSH-only. Telnet and serial sessions have no pre-auth and never touch the vault.
 
 File locations by platform:
 
@@ -378,6 +424,8 @@ npm run build:linux
 
 TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer is plain HTML, CSS, and JavaScript — no framework, no build step, directly debuggable in DevTools.
 
+`serialport` is the one native dependency in the tree. `@electron/rebuild` (already wired into devDependencies) rebuilds its bindings against Electron's ABI on install. If you ever hit a "module did not self-register" error, run `npx electron-rebuild -f -w serialport` to force a rebuild. For packaged builds, both `node_modules/serialport/**` and `node_modules/@serialport/**` are unpacked from the asar so native `dlopen` can find the binary at runtime.
+
 ---
 
 ## Roadmap
@@ -388,7 +436,8 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 * `TransportManager` abstraction with pluggable backends
 * **SSH transport** — password, key file, SSH agent, keyboard-interactive authentication
 * **Telnet transport** — RFC 854 IAC negotiation, NAWS resize, CRLF line-mode — tested against GNS3 / dynamips consoles and real terminal servers
-* Protocol selector in session editor and quick-connect dialog
+* **Serial transport** — node-serialport-based, USB-to-serial + real UART, configurable framing / flow control / line endings, Send Break (single and burst), platform-aware port discovery, Linux dialout pre-check — tested against Cisco 2911 ROMMON and Prolific PL2303 adapters
+* Protocol selector in session editor (SSH / telnet) and quick-connect dialog (SSH / telnet / serial)
 * Legacy cipher/KEX support for older SSH devices
 * Shell → exec channel fallback
 * YAML/JSON session files with folder hierarchy and optional `protocol` field
@@ -400,11 +449,11 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 * Persistent settings (window bounds, theme, terminal prefs)
 * Auto-reload last sessions file on launch
 * Multi-line paste warning with preview
-* Session capture to file (ANSI-stripped)
+* Session capture to file (ANSI-stripped, works across all three transports)
 * Encrypted credential vault (AES-256-GCM, PBKDF2, SQLite)
 * Host pattern matching and score-based credential resolution
 * OS keychain integration for auto-unlock
-* Tab context menu (Close, Close Others, Close to the Right, Close All)
+* Tab context menu (Close, Close Others, Close to the Right, Close All; plus Send Break entries on serial tabs)
 * Terminal font zoom with persistence
 * Active-connection confirmations on tab close, window close, and app quit
 * Refit-on-reconnect
@@ -422,7 +471,6 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 
 ### Planned
 
-* Serial transport (console cables, crash carts) — next subclass of `TransportManager`
 * Auto-reconnect with exponential backoff
 * Auto-update via electron-updater
 * Session export (ANSI + plain text, with timestamps)

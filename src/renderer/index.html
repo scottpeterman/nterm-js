@@ -16,6 +16,7 @@
         </div>
         <div class="topbar-center">
             <button id="btn-quick-connect" title="New Connection (Ctrl+N)">+ Connect</button>
+            <button id="btn-send-break" title="Send Break — click for 1.5s pulse, Shift+click for 5× burst" style="display:none;">Send Break</button>
         </div>
         <div class="topbar-right">
             <button id="btn-devtools" title="Open DevTools (F12)">&#x1F41B;</button>
@@ -74,15 +75,20 @@
                     <select id="dlg-protocol">
                         <option value="ssh">SSH</option>
                         <option value="telnet">Telnet</option>
+                        <option value="serial">Serial</option>
                     </select>
                 </div>
-                <div class="form-row">
-                    <label for="dlg-host">Host</label>
-                    <input type="text" id="dlg-host" placeholder="192.168.1.1" spellcheck="false" autocomplete="off">
-                </div>
-                <div class="form-row">
-                    <label for="dlg-port">Port</label>
-                    <input type="number" id="dlg-port" value="22" min="1" max="65535">
+
+                <!-- Network fields (host/port) — hidden for serial -->
+                <div id="dlg-network-fields">
+                    <div class="form-row">
+                        <label for="dlg-host">Host</label>
+                        <input type="text" id="dlg-host" placeholder="192.168.1.1" spellcheck="false" autocomplete="off">
+                    </div>
+                    <div class="form-row">
+                        <label for="dlg-port">Port</label>
+                        <input type="number" id="dlg-port" value="22" min="1" max="65535">
+                    </div>
                 </div>
 
                 <div id="dlg-ssh-fields">
@@ -137,6 +143,80 @@
                         Legacy mode (older devices)
                     </label>
                 </div>
+                </div>
+
+                <!-- Serial fields (shown when protocol=serial) -->
+                <div id="dlg-serial-fields" style="display:none;">
+                    <div id="dlg-serial-warning" style="display:none; padding:8px 10px;
+                         background:rgba(250,204,21,0.10);
+                         border:1px solid rgba(250,204,21,0.35);
+                         color:var(--text-primary);
+                         border-radius:4px;
+                         font-size:11px;
+                         margin-bottom:10px;
+                         white-space:pre-wrap;
+                         font-family:'Cascadia Code','Fira Code','Consolas',monospace;"></div>
+                    <div class="form-row">
+                        <label for="dlg-serial-path">Port</label>
+                        <div class="input-with-button">
+                            <select id="dlg-serial-path">
+                                <option value="">(refresh to detect)</option>
+                            </select>
+                            <button id="btn-refresh-serial" title="Refresh port list">&#x21bb;</button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label for="dlg-serial-baud">Baud</label>
+                        <select id="dlg-serial-baud">
+                            <option>9600</option>
+                            <option>19200</option>
+                            <option>38400</option>
+                            <option>57600</option>
+                            <option>115200</option>
+                            <option>2400</option>
+                            <option>4800</option>
+                            <option>230400</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Frame</label>
+                        <div style="display:flex; gap:6px;">
+                            <select id="dlg-serial-databits" title="Data bits">
+                                <option>8</option>
+                                <option>7</option>
+                            </select>
+                            <select id="dlg-serial-parity" title="Parity">
+                                <option value="none">none</option>
+                                <option value="even">even</option>
+                                <option value="odd">odd</option>
+                            </select>
+                            <select id="dlg-serial-stopbits" title="Stop bits">
+                                <option>1</option>
+                                <option>2</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label for="dlg-serial-line-ending">Line ending</label>
+                        <select id="dlg-serial-line-ending">
+                            <option value="cr">CR (network gear)</option>
+                            <option value="crlf">CRLF</option>
+                            <option value="lf">LF</option>
+                            <option value="raw">Raw (pass-through)</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="dlg-serial-echo">
+                            Local echo
+                        </label>
+                    </div>
+                    <div class="form-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="dlg-serial-rtscts">
+                            RTS/CTS flow control
+                        </label>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -586,12 +666,14 @@
         <div class="ctx-item" id="ctx-clear">Clear Terminal</div>
     </div>
 
-    
     <!-- ─── Tab Context Menu ──────────────────────────────────── -->
 <div id="tab-ctx-menu" class="context-menu" style="display:none;">
     <div class="ctx-item" id="tab-ctx-close">Close</div>
     <div class="ctx-item" id="tab-ctx-close-others">Close Others</div>
     <div class="ctx-item" id="tab-ctx-close-right">Close to the Right</div>
+    <div class="ctx-separator" id="tab-ctx-serial-sep" style="display:none;"></div>
+    <div class="ctx-item" id="tab-ctx-send-break" style="display:none;">Send Break (1.5s)</div>
+    <div class="ctx-item" id="tab-ctx-send-break-burst" style="display:none;">Send Break Burst (5×)</div>
     <div class="ctx-separator"></div>
     <div class="ctx-item ctx-danger" id="tab-ctx-close-all">Close All</div>
 </div>

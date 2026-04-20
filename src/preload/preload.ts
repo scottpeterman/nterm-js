@@ -32,6 +32,13 @@ contextBridge.exposeInMainWorld('nterm', {
         ipcRenderer.on('ssh:message', (_event, message) => callback(message));
     },
 
+    // ─── Serial ──────────────────────────────────────────────
+    listSerialPorts: (showAll: boolean = false) =>
+        ipcRenderer.invoke('serial:list-ports', { showAll }),
+
+    serialSendBreak: (sessionId: string, burst: boolean = false) =>
+        ipcRenderer.invoke('serial:send-break', { sessionId, burst }),
+
     // ─── Sessions ────────────────────────────────────────────
     loadSessionsFile: () =>
         ipcRenderer.invoke('sessions:load-file'),

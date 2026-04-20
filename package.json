@@ -1,6 +1,6 @@
 {
   "name": "nterm-js",
-  "version": "0.2.2",
+  "version": "0.2.5",
   "description": "A modest, highly usefull SSH terminal",
   "main": "dist/main/main.js",
   "scripts": {
@@ -22,6 +22,7 @@
     "electron-log": "^5.0.0",
     "electron-store": "^8.2.0",
     "js-yaml": "^4.1.0",
+    "serialport": "^12.0.0",
     "ssh2": "^1.16.0"
   },
   "devDependencies": {
@@ -32,7 +33,9 @@
     "@types/ssh2": "^1.15.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "serialport": "^12.0.0"
+
   },
   "build": {
     "appId": "com.scottpeterman.nterm",
@@ -49,7 +52,6 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
-
     },
     "mac": {
       "target": "dmg"
