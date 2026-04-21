@@ -61,8 +61,10 @@ function createWindow(): void {
         'nord':             '#2e3440',
         'gruvbox-dark':     '#282828',
         'gruvbox-light':    '#fbf1c7',
+        'gruvbox-hybrid':   '#282828',
         'solarized-dark':   '#002b36',
         'solarized-light':  '#fdf6e3',
+        'solarized-hybrid': '#002b36',
         'corporate':        '#f5f6fa',
         'corporate-dark':   '#0f1a2e',
     };

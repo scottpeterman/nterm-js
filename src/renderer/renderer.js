@@ -1913,13 +1913,26 @@
 
     // ─── Paste Handling (multi-line warning) ────────────────
 
+    function sendPaste(sessionId, text) {
+        const session = terminals.get(sessionId);
+        if (!session) return;
+        // Strip any embedded bracketed-paste delimiters so clipboard content
+        // can't break out of the \x1b[200~...\x1b[201~ wrapper.
+        const safe = text.replace(/\x1b\[20[01]~/g, '');
+        // term.paste() honors the remote's bracketedPasteMode (DEC 2004) —
+        // wraps with \x1b[200~...\x1b[201~ when active, otherwise normalizes
+        // \r\n and \n → \r to match an Enter keypress. Emits via onData,
+        // which the existing handler forwards to the transport.
+        session.term.paste(safe);
+    }
+
     function checkAndSendPaste(sessionId, text) {
         const lines = text.split(/\r?\n/);
         const threshold = settings?.pasteWarningThreshold ?? 1;
         if (lines.length > threshold) {
             showPasteWarning(sessionId, text, lines.length);
         } else {
-            window.nterm.send(sessionId, text);
+            sendPaste(sessionId, text);
         }
     }
 
@@ -1951,7 +1964,7 @@
 
         function onConfirm() {
             cleanup();
-            window.nterm.send(sessionId, text);
+            sendPaste(sessionId, text);
         }
 
         function onCancel() {

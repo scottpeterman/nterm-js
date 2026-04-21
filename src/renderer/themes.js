@@ -223,6 +223,51 @@
             },
         },
 
+        // ─── Gruvbox Hybrid ───────────────────────────────────
+        // Gruvbox Dark chrome, Gruvbox Light terminal — dark app frame
+        // around a paper-cream terminal. Easier on peripheral vision
+        // than full-light, easier on the eyes for long reads than full-dark.
+        'gruvbox-hybrid': {
+            label: 'Gruvbox Hybrid',
+            type: 'light',
+            css: {
+                '--bg-base':       '#282828',
+                '--bg-surface':    '#1d2021',
+                '--bg-overlay':    '#3c3836',
+                '--bg-hover':      '#504945',
+                '--text-primary':  '#ebdbb2',
+                '--text-secondary':'#bdae93',
+                '--text-muted':    '#7c6f64',
+                '--border':        '#3c3836',
+                '--accent':        '#83a598',
+                '--accent-hover':  '#8ec07c',
+                '--green':         '#b8bb26',
+                '--red':           '#fb4934',
+                '--yellow':        '#fabd2f',
+                '--tab-active':    '#282828',
+                '--tab-inactive':  '#1d2021',
+                '--input-bg':      '#3c3836',
+                '--scrollbar':     '#504945',
+                '--modal-bg':      '#282828',
+                '--modal-shadow':  'rgba(0, 0, 0, 0.6)',
+            },
+            // Terminal area overrides — softened light terminal in dark chrome.
+            // Steps down from bg (#fbf1c7) to bg2/fg1 (#ebdbb2) — less saturated,
+            // less visually hot against the dark frame.
+            terminalArea: {
+                '--bg-base': '#ebdbb2',
+            },
+            xterm: {
+                background: '#ebdbb2', foreground: '#3c3836', cursor: '#282828',
+                selectionBackground: '#bdae93',
+                black: '#fbf1c7', red: '#cc241d', green: '#98971a', yellow: '#d79921',
+                blue: '#458588', magenta: '#b16286', cyan: '#689d6a', white: '#7c6f64',
+                brightBlack: '#928374', brightRed: '#9d0006', brightGreen: '#79740e',
+                brightYellow: '#b57614', brightBlue: '#076678', brightMagenta: '#8f3f71',
+                brightCyan: '#427b58', brightWhite: '#3c3836',
+            },
+        },
+
         // ─── Solarized Dark ───────────────────────────────────
         'solarized-dark': {
             label: 'Solarized Dark',
@@ -287,6 +332,52 @@
             xterm: {
                 background: '#fdf6e3', foreground: '#657b83', cursor: '#657b83',
                 selectionBackground: '#e6dfcc',
+                black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900',
+                blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5',
+                brightBlack: '#586e75', brightRed: '#cb4b16', brightGreen: '#859900',
+                brightYellow: '#b58900', brightBlue: '#268bd2', brightMagenta: '#6c71c4',
+                brightCyan: '#2aa198', brightWhite: '#fdf6e3',
+            },
+        },
+
+        // ─── Solarized Hybrid ─────────────────────────────────
+        // Solarized Dark chrome, Solarized Light terminal. Solarized was
+        // designed from the ground up as one palette with two backgrounds,
+        // so this pairing is the most natural hybrid in the registry.
+        'solarized-hybrid': {
+            label: 'Solarized Hybrid',
+            type: 'light',
+            css: {
+                '--bg-base':       '#002b36',
+                '--bg-surface':    '#002430',
+                '--bg-overlay':    '#073642',
+                '--bg-hover':      '#0a4050',
+                '--text-primary':  '#839496',
+                '--text-secondary':'#93a1a1',
+                '--text-muted':    '#586e75',
+                '--border':        '#073642',
+                '--accent':        '#268bd2',
+                '--accent-hover':  '#2aa198',
+                '--green':         '#859900',
+                '--red':           '#dc322f',
+                '--yellow':        '#b58900',
+                '--tab-active':    '#002b36',
+                '--tab-inactive':  '#002430',
+                '--input-bg':      '#073642',
+                '--scrollbar':     '#0a4050',
+                '--modal-bg':      '#002b36',
+                '--modal-shadow':  'rgba(0, 0, 0, 0.6)',
+            },
+            // Terminal area overrides — softened light terminal in dark chrome.
+            // Steps down from base3 (#fdf6e3) to base2 (#eee8d5), Solarized's
+            // defined "light content" tone. Selection bumps to base1 so it
+            // still reads against the quieter bg.
+            terminalArea: {
+                '--bg-base': '#eee8d5',
+            },
+            xterm: {
+                background: '#eee8d5', foreground: '#657b83', cursor: '#657b83',
+                selectionBackground: '#93a1a1',
                 black: '#073642', red: '#dc322f', green: '#859900', yellow: '#b58900',
                 blue: '#268bd2', magenta: '#d33682', cyan: '#2aa198', white: '#eee8d5',
                 brightBlack: '#586e75', brightRed: '#cb4b16', brightGreen: '#859900',
