@@ -189,6 +189,7 @@
     const setScrollback       = document.getElementById('set-scrollback');
     const setScrollbackHint   = document.getElementById('set-scrollback-hint');
     const setPasteThreshold   = document.getElementById('set-paste-threshold');
+    const setPasteLineDelay   = document.getElementById('set-paste-line-delay');
     const setDefaultUsername  = document.getElementById('set-default-username');
     const setDefaultAuth      = document.getElementById('set-default-auth');
     const setDefaultKeyfile   = document.getElementById('set-default-keyfile');
@@ -1542,6 +1543,14 @@
             captureState.delete(sessionId);
         }
 
+        // Cancel any in-flight paced paste before disposing the terminal.
+        // The pacing loop self-aborts on missing session, but clearing the
+        // timer here is tidier and frees it before term.dispose().
+        if (session.pastePacing) {
+            session.pastePacing.cancel();
+            session.pastePacing = null;
+        }
+
         window.nterm.disconnect(sessionId);
         session.term.dispose();
         session.element.remove();
@@ -1674,7 +1683,18 @@
         const session = terminals.get(sessionId);
         if (!session) return;
 
+        const prev = session.status;
         session.status = status;
+
+        // Any transition out of 'connected' must cancel an in-flight paced
+        // paste. sendPastePaced's step() checks status on each tick, but
+        // clearing the timer here also frees the session.pastePacing handle
+        // immediately so a subsequent reconnect + paste isn't blocked by
+        // the "already in progress" guard.
+        if (prev === 'connected' && status !== 'connected' && session.pastePacing) {
+            cancelPastePacing(sessionId, `aborted — session ${status}`);
+        }
+
         const dot = session.tab.querySelector('.tab-status');
         if (dot) {
             dot.className = `tab-status ${status}`;
@@ -1911,9 +1931,24 @@
         }
     });
 
-    // ─── Paste Handling (multi-line warning) ────────────────
+    // ─── Paste Handling (multi-line warning + optional line-delay pacing) ────────────────
+    //
+    // Fast path (delay=0): session.term.paste() emits through onData as one blob —
+    // unchanged behavior, honors bracketed-paste mode if the remote advertises it.
+    //
+    // Paced path (delay>0): bypasses term.paste() and emits one line at a time via
+    // window.nterm.send(), with setTimeout(delay) between lines. Matches term.paste's
+    // line-ending normalization (\r\n and \n → \r) so network gear sees bare CR.
+    //
+    // Rationale for the renderer-side approach: the chokepoint is the paste dialog,
+    // which already sees all multi-line input regardless of transport. A single
+    // implementation here works for SSH, telnet (incl. reverse-telnet to GNS3), and
+    // serial with zero transport-layer changes.
+    //
+    // Keystrokes during a paced paste go straight through onData → transport, same as
+    // always — they will interleave with paced lines. Same behavior as SecureCRT.
 
-    function sendPaste(sessionId, text) {
+    function sendPasteFast(sessionId, text) {
         const session = terminals.get(sessionId);
         if (!session) return;
         // Strip any embedded bracketed-paste delimiters so clipboard content
@@ -1926,13 +1961,125 @@
         session.term.paste(safe);
     }
 
+    function sendPastePaced(sessionId, text, lineDelayMs) {
+        const session = terminals.get(sessionId);
+        if (!session) return;
+
+        // Refuse if another paste is already draining on this session.
+        // Queueing is more data-loss prone than telling the user to wait —
+        // cancelling mid-paste would leave a half-applied config.
+        if (session.pastePacing) {
+            session.term.write(
+                '\x1b[2m\r\n[paste] another paste is already in progress — wait or disconnect to cancel.\x1b[0m\r\n'
+            );
+            return;
+        }
+
+        const safe = text.replace(/\x1b\[20[01]~/g, '');
+
+        // Split on any line terminator. Preserve the final empty element
+        // (produced by a trailing newline) so we can emit the same number of
+        // CRs as the source had newlines — matches term.paste() behavior.
+        const chunks = safe.split(/\r\n|\r|\n/);
+
+        // Sanity: if the split yielded a single element, there were no line
+        // breaks to pace around. Fall through to the fast path.
+        if (chunks.length <= 1) {
+            sendPasteFast(sessionId, text);
+            return;
+        }
+
+        const seconds = ((chunks.length - 1) * lineDelayMs / 1000).toFixed(1);
+        session.term.write(
+            `\x1b[2m\r\n[paste] pacing ${chunks.length} lines @ ${lineDelayMs}ms (~${seconds}s)\x1b[0m\r\n`
+        );
+
+        let i = 0;
+        let timer = null;
+        const pacing = {
+            cancel() {
+                if (timer) { clearTimeout(timer); timer = null; }
+                // Marker used by session.pastePacing identity check below.
+                pacing.cancelled = true;
+            },
+            cancelled: false,
+        };
+        session.pastePacing = pacing;
+
+        function finish(reason) {
+            // Only clear if we're still the active paste — a subsequent paste
+            // would have replaced session.pastePacing already.
+            if (session.pastePacing === pacing) session.pastePacing = null;
+            if (reason) {
+                session.term.write(`\x1b[2m[paste] ${reason}\x1b[0m\r\n`);
+            }
+        }
+
+        function step() {
+            timer = null;
+            if (pacing.cancelled) return;                      // external cancel
+            const s = terminals.get(sessionId);
+            if (!s) { finish(null); return; }                  // tab closed
+            if (s.status !== 'connected') {                    // disconnect mid-paste
+                finish('aborted — session not connected');
+                return;
+            }
+            if (i >= chunks.length) {
+                finish(null);
+                return;
+            }
+            const chunk = chunks[i];
+            const isLast = (i === chunks.length - 1);
+            i++;
+
+            // For every element except a trailing empty one, emit the chunk
+            // plus a CR. For the trailing empty, skip entirely — term.paste
+            // wouldn't emit a stray CR there either. For a final non-empty
+            // chunk (no trailing newline in source), emit without CR to match.
+            let out;
+            if (isLast) {
+                if (chunk === '') { finish(null); return; }
+                out = chunk;
+            } else {
+                out = chunk + '\r';
+            }
+
+            try {
+                window.nterm.send(sessionId, out);
+            } catch (err) {
+                finish(`write error: ${err && err.message ? err.message : err}`);
+                return;
+            }
+
+            if (i < chunks.length) {
+                timer = setTimeout(step, lineDelayMs);
+            } else {
+                finish(null);
+            }
+        }
+
+        step();
+    }
+
+    function cancelPastePacing(sessionId, reason) {
+        const session = terminals.get(sessionId);
+        if (!session || !session.pastePacing) return;
+        const p = session.pastePacing;
+        p.cancel();
+        session.pastePacing = null;
+        if (reason) {
+            session.term.write(`\x1b[2m\r\n[paste] ${reason}\x1b[0m\r\n`);
+        }
+    }
+
     function checkAndSendPaste(sessionId, text) {
         const lines = text.split(/\r?\n/);
         const threshold = settings?.pasteWarningThreshold ?? 1;
         if (lines.length > threshold) {
             showPasteWarning(sessionId, text, lines.length);
         } else {
-            sendPaste(sessionId, text);
+            // Short paste — never paced, goes straight through the fast path.
+            sendPasteFast(sessionId, text);
         }
     }
 
@@ -1940,6 +2087,8 @@
         const overlay = document.getElementById('paste-dialog');
         const preview = document.getElementById('paste-preview');
         const countEl = document.getElementById('paste-line-count');
+        const delaySel = document.getElementById('paste-line-delay');
+        const estEl    = document.getElementById('paste-delay-estimate');
 
         const previewLines = text.split(/\r?\n/).slice(0, 10);
         let previewText = previewLines.join('\n');
@@ -1948,6 +2097,25 @@
         }
         preview.textContent = previewText;
         countEl.textContent = `${lineCount} lines`;
+
+        // Pre-select the user's default; if not a preset option, fall through
+        // to "None" to keep the dropdown sane. Advanced customization lives
+        // in the Settings dialog.
+        const defaultDelay = settings?.defaultPasteLineDelayMs ?? 0;
+        const hasOption = Array.from(delaySel.options).some(o => Number(o.value) === defaultDelay);
+        delaySel.value = hasOption ? String(defaultDelay) : '0';
+
+        function refreshEstimate() {
+            const ms = Number(delaySel.value) || 0;
+            if (ms <= 0) {
+                estEl.textContent = '';
+            } else {
+                const secs = ((lineCount - 1) * ms / 1000).toFixed(1);
+                estEl.textContent = `≈ ${secs}s total`;
+            }
+        }
+        refreshEstimate();
+        delaySel.addEventListener('change', refreshEstimate);
 
         overlay.style.display = 'flex';
 
@@ -1958,13 +2126,20 @@
             overlay.style.display = 'none';
             btnConfirm.removeEventListener('click', onConfirm);
             btnCancel.removeEventListener('click', onCancel);
+            delaySel.removeEventListener('change', refreshEstimate);
+            document.removeEventListener('keydown', onKey);
             const session = terminals.get(sessionId);
             if (session) session.term.focus();
         }
 
         function onConfirm() {
+            const delayMs = Math.max(0, Math.min(5000, Number(delaySel.value) || 0));
             cleanup();
-            sendPaste(sessionId, text);
+            if (delayMs > 0) {
+                sendPastePaced(sessionId, text, delayMs);
+            } else {
+                sendPasteFast(sessionId, text);
+            }
         }
 
         function onCancel() {
@@ -1975,8 +2150,8 @@
         btnCancel.addEventListener('click', onCancel);
 
         function onKey(e) {
-            if (e.key === 'Escape') { onCancel(); document.removeEventListener('keydown', onKey); }
-            if (e.key === 'Enter')  { onConfirm(); document.removeEventListener('keydown', onKey); }
+            if (e.key === 'Escape') { onCancel(); }
+            if (e.key === 'Enter')  { onConfirm(); }
         }
         document.addEventListener('keydown', onKey);
     }
@@ -2044,7 +2219,7 @@
         'terminalFontFamily', 'terminalFontSize',
         'sidebarFontSize',
         'cursorStyle', 'cursorBlink',
-        'scrollbackLines', 'pasteWarningThreshold',
+        'scrollbackLines', 'pasteWarningThreshold', 'defaultPasteLineDelayMs',
         'defaultUsername', 'defaultAuthMethod',
         'defaultPrivateKeyPath', 'defaultLegacyMode',
     ];
@@ -2168,6 +2343,7 @@
         setCursorBlink.checked   = !!fresh.cursorBlink;
         setScrollback.value      = fresh.scrollbackLines ?? 10000;
         setPasteThreshold.value  = fresh.pasteWarningThreshold ?? 1;
+        setPasteLineDelay.value  = fresh.defaultPasteLineDelayMs ?? 0;
         setDefaultUsername.value = fresh.defaultUsername || '';
         setDefaultAuth.value     = fresh.defaultAuthMethod || 'password';
         setDefaultKeyfile.value  = fresh.defaultPrivateKeyPath || '';
@@ -2203,6 +2379,7 @@
             cursorBlink:           !!setCursorBlink.checked,
             scrollbackLines:       clampInt(setScrollback.value, 500, 100000, settingsSnapshot.scrollbackLines),
             pasteWarningThreshold: clampInt(setPasteThreshold.value, 1, 1000, settingsSnapshot.pasteWarningThreshold),
+            defaultPasteLineDelayMs: clampInt(setPasteLineDelay.value, 0, 5000, settingsSnapshot.defaultPasteLineDelayMs),
             defaultUsername:       setDefaultUsername.value,
             defaultAuthMethod:     setDefaultAuth.value,
             defaultPrivateKeyPath: setDefaultKeyfile.value,
@@ -2304,6 +2481,7 @@
         setCursorBlink.checked   = !!defaults.cursorBlink;
         setScrollback.value      = defaults.scrollbackLines ?? 10000;
         setPasteThreshold.value  = defaults.pasteWarningThreshold ?? 1;
+        setPasteLineDelay.value  = defaults.defaultPasteLineDelayMs ?? 0;
         setDefaultUsername.value = defaults.defaultUsername || '';
         setDefaultAuth.value     = defaults.defaultAuthMethod || 'password';
         setDefaultKeyfile.value  = defaults.defaultPrivateKeyPath || '';
@@ -2351,7 +2529,7 @@
 
     // Enter-to-save on text/number inputs; leave checkboxes and selects alone
     ['set-font-size', 'set-sidebar-font-size', 'set-scrollback',
-     'set-paste-threshold', 'set-default-username', 'set-default-keyfile'].forEach(id => {
+     'set-paste-threshold', 'set-paste-line-delay', 'set-default-username', 'set-default-keyfile'].forEach(id => {
         document.getElementById(id).addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();

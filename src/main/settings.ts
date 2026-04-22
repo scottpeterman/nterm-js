@@ -49,6 +49,7 @@ export interface NtermSettings {
     cursorStyle: 'block' | 'underline' | 'bar';
     cursorBlink: boolean;
     pasteWarningThreshold: number;
+    defaultPasteLineDelayMs: number;
 
     // Future-proofing: opaque bags for Phase 2+ features
     sniffer: Record<string, unknown>;
@@ -96,6 +97,7 @@ const defaults: NtermSettings = {
     cursorStyle: 'block',
     cursorBlink: true,
     pasteWarningThreshold: 1,
+    defaultPasteLineDelayMs: 0,
 
     sniffer: {},
     vault: {},
@@ -164,6 +166,11 @@ const store: any = new Store({
             type: 'number',
             minimum: 1,
             maximum: 1000,
+        },
+        defaultPasteLineDelayMs: {
+            type: 'number',
+            minimum: 0,
+            maximum: 5000,
         },
         sniffer: { type: 'object' },
         vault: { type: 'object' },
