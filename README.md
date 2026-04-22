@@ -4,7 +4,9 @@
 
 Tabbed sessions, ten themes, session capture, and a connection layer that works with every server or console port — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
 
-[![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/nterm1.gif)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/nterm1.gif)
+#### See "Releases" for installable binaries - Window, Mac and Linux 
+
+[![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/slides.gif)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/slides.gif)
 
 ---
 
@@ -137,22 +139,94 @@ The vault is SSH-only. Telnet and serial have no pre-auth and never touch it.
 
 ## Screenshots
 
-|  |  |
-| --- | --- |
-| [Terminal — Gruvbox Dark](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/gruv-htop.png) | [Terminal — Corporate Light](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/corp-light-htop.png) |
-| Gruvbox Dark — htop | Corporate Light — htop |
-| [Vault unlock](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/vault-login.png) | [Vault manager](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/vault1.png) |
-| Credential vault — unlock | Credential vault — manager |
-| [Session editor](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/gruv-edit-session.png) |  |
-| Session editor |  |
+### Themes
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/theme_solarized.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/theme_solarized.png" alt="Solarized Dark" />
+      </a>
+      <br /><sub>Solarized Dark</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/theme_gruvbox.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/theme_gruvbox.png" alt="Gruvbox Dark" />
+      </a>
+      <br /><sub>Gruvbox Dark</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/theme-light.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/theme-light.png" alt="Light theme" />
+      </a>
+      <br /><sub>Light theme</sub>
+    </td>
+  </tr>
+</table>
+
+### Credential Vault
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/valt_creds_list.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/valt_creds_list.png" alt="Vault manager" />
+      </a>
+      <br /><sub>Vault manager — score-based host matching, AES-256-GCM at rest</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/edit_creds.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/edit_creds.png" alt="Edit credential" />
+      </a>
+      <br /><sub>Edit credential — password, key file, host-match patterns</sub>
+    </td>
+  </tr>
+</table>
+
+### Connection
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/new_connection.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/new_connection.png" alt="Quick-connect dialog" />
+      </a>
+      <br /><sub>Quick-connect — protocol selector, auth chooser, vault binding</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/reverse_telnet_gns.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/reverse_telnet_gns.png" alt="Reverse telnet to GNS3 console" />
+      </a>
+      <br /><sub>Reverse telnet — GNS3 / dynamips console, RFC 854 IAC + CRLF line mode</sub>
+    </td>
+  </tr>
+</table>
+
+### Dialogs
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/app-settings.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/app-settings.png" alt="Settings dialog" />
+      </a>
+      <br /><sub>Settings — live-apply to open terminals, no reload required</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/multi-line-past.png">
+        <img src="https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/multi-line-past.png" alt="Multi-line paste warning" />
+      </a>
+      <br /><sub>Multi-line paste warning — preview, confirm, optional line-delay pacing</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
 ## Install
 
 ### From Source
-
-There are no binary releases yet — installers are the next milestone. To run from source:
+To run from source:
 
 ```
 git clone https://github.com/scottpeterman/nterm-js.git
