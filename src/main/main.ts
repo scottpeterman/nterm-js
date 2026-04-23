@@ -51,24 +51,12 @@ log.transports.console.level = app.isPackaged ? false : 'debug';
 // ─── Window ──────────────────────────────────────────────────
 function createWindow(): void {
     const savedBounds: WindowBounds = getSetting('windowBounds');
-    const savedTheme = getSetting('theme');
 
-    // Map theme names to initial window backgrounds (avoids white flash on launch)
-    const themeBackgrounds: Record<string, string> = {
-        'catppuccin-mocha': '#1e1e2e',
-        'catppuccin-latte': '#eff1f5',
-        'darcula':          '#2b2b2b',
-        'nord':             '#2e3440',
-        'gruvbox-dark':     '#282828',
-        'gruvbox-light':    '#fbf1c7',
-        'gruvbox-hybrid':   '#282828',
-        'solarized-dark':   '#002b36',
-        'solarized-light':  '#fdf6e3',
-        'solarized-hybrid': '#002b36',
-        'corporate':        '#f5f6fa',
-        'corporate-dark':   '#0f1a2e',
-    };
-    const windowBg = themeBackgrounds[savedTheme] || '#1e1e2e';
+    // Window background is persisted by the renderer on every theme change,
+    // so main can paint the correct color before the renderer loads — no
+    // flash regardless of which theme (native or imported) the user is on.
+    // Falls back to Mocha on first launch before the renderer has written.
+    const windowBg = getSetting('windowBackground') || '#1e1e2e';
 
     mainWindow = new BrowserWindow({
         // Use saved position if available, otherwise let OS decide

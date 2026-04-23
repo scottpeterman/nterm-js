@@ -2,7 +2,7 @@
 
 **A modern SSH, telnet, and serial terminal with a built-in encrypted credential vault.**
 
-Tabbed sessions, ten themes, session capture, and a connection layer that works with every server or console port — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
+Tabbed sessions, thirty themes, session capture, and a connection layer that works with every server or console port — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
 
 #### See "Releases" for installable binaries - Window, Mac and Linux 
 
@@ -50,9 +50,8 @@ Download, install, connect. That's the pitch.
 
 **Themes**
 
-* Ten themes shipped: Catppuccin Mocha, Catppuccin Latte, Darcula, Nord, Gruvbox Dark, Gruvbox Light, Solarized Dark, Solarized Light, Corporate Dark, Corporate Light
-* Live theme switcher in the top bar
-* Persists across launches
+* 30 themes spanning modern palettes (Catppuccin, Darcula, Nord, Gruvbox, Solarized, Corporate), retro classics (Borland, Norton, PC Tools, Lotus 1-2-3, Amiga, Vintage), CRT phosphor (green, amber), cyberpunk-family, and dark-chrome / light-terminal hybrids
+* Live theme switcher in the top bar, persists across launches
 
 **Authentication (SSH)**
 
@@ -289,7 +288,7 @@ src/
 └── renderer/
     ├── index.html            # Split layout: session tree + terminal tabs
     ├── renderer.js           # xterm.js terminals, tab management, dialogs
-    ├── themes.js             # Ten theme palettes
+    ├── themes.js             # Thirty theme palettes
     ├── vault-ui.js           # Vault unlock and credential manager UI
     └── styles.css            # CSS variable theming
 ```
@@ -426,7 +425,7 @@ Settings persist across launches in the OS-native config path:
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `theme` | `catppuccin-mocha` | One of ten shipped themes |
+| `theme` | `catppuccin-mocha` | One of thirty shipped themes |
 | `terminalFontFamily` | Platform-specific† | Terminal font — selected from a curated list with availability detection |
 | `terminalFontSize` | `14` | Terminal font size (8–32) |
 | `sidebarFontSize` | `12` | Session tree font size (10–20) |
@@ -518,7 +517,7 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 * Connection dialog with auth method and credential selector
 * Session editor (add, edit, duplicate, delete)
 * Folder editor (add, rename, delete)
-* Ten themes with live switching
+* Thirty themes with live switching
 * Session search and filter
 * Persistent settings (window bounds, theme, terminal prefs)
 * Auto-reload last sessions file on launch

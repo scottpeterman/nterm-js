@@ -29,6 +29,7 @@ export interface WindowBounds {
 export interface NtermSettings {
     // Appearance
     theme: string;
+    windowBackground: string;
     sidebarWidth: number;
     sidebarFontSize: number;
     terminalFontSize: number;
@@ -49,6 +50,7 @@ export interface NtermSettings {
     cursorStyle: 'block' | 'underline' | 'bar';
     cursorBlink: boolean;
     pasteWarningThreshold: number;
+    defaultPasteLineDelayMs: number;
 
     // Future-proofing: opaque bags for Phase 2+ features
     sniffer: Record<string, unknown>;
@@ -73,6 +75,7 @@ function defaultTerminalFont(): string {
 
 const defaults: NtermSettings = {
     theme: 'catppuccin-mocha',
+    windowBackground: '#1e1e2e',
     sidebarWidth: 220,
     sidebarFontSize: 12,
     terminalFontSize: 14,
@@ -96,6 +99,7 @@ const defaults: NtermSettings = {
     cursorStyle: 'block',
     cursorBlink: true,
     pasteWarningThreshold: 1,
+    defaultPasteLineDelayMs: 0,
 
     sniffer: {},
     vault: {},
@@ -112,6 +116,9 @@ const store: any = new Store({
 
     schema: {
         theme: {
+            type: 'string',
+        },
+                windowBackground: {      
             type: 'string',
         },
         sidebarWidth: {
@@ -164,6 +171,11 @@ const store: any = new Store({
             type: 'number',
             minimum: 1,
             maximum: 1000,
+        },
+        defaultPasteLineDelayMs: {
+            type: 'number',
+            minimum: 0,
+            maximum: 5000,
         },
         sniffer: { type: 'object' },
         vault: { type: 'object' },
