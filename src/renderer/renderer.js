@@ -303,14 +303,21 @@
         for (const [, session] of terminals) {
             session.term.options.theme = xtermTheme;
         }
-        // Persist theme choice
-        window.nterm.setSetting('theme', themeName);
+        // Persist theme + window bg atomically so main can paint the
+        // correct color on next launch without a flash
+        window.nterm.setSettings({
+            theme: themeName,
+            windowBackground: window.NtermThemes.getWindowBackground(themeName),
+        });
     });
 
     /** Apply named theme and return xterm theme object */
     function applyAndGetTerminalTheme(themeName) {
         const resolved = window.NtermThemes.migrateLegacyTheme(themeName || 'catppuccin-mocha');
         themeSelect.value = resolved;
+        // Self-heal: persist bg at boot so legacy migrations ('dark'/'light')
+        // and post-upgrade first-launches write the correct value forward
+        window.nterm.setSetting('windowBackground', window.NtermThemes.getWindowBackground(resolved));
         return window.NtermThemes.applyTheme(resolved);
     }
 

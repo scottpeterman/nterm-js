@@ -29,6 +29,7 @@ export interface WindowBounds {
 export interface NtermSettings {
     // Appearance
     theme: string;
+    windowBackground: string;
     sidebarWidth: number;
     sidebarFontSize: number;
     terminalFontSize: number;
@@ -74,6 +75,7 @@ function defaultTerminalFont(): string {
 
 const defaults: NtermSettings = {
     theme: 'catppuccin-mocha',
+    windowBackground: '#1e1e2e',
     sidebarWidth: 220,
     sidebarFontSize: 12,
     terminalFontSize: 14,
@@ -114,6 +116,9 @@ const store: any = new Store({
 
     schema: {
         theme: {
+            type: 'string',
+        },
+                windowBackground: {      
             type: 'string',
         },
         sidebarWidth: {
