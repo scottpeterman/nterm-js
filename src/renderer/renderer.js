@@ -1954,6 +1954,14 @@
     //
     // Keystrokes during a paced paste go straight through onData → transport, same as
     // always — they will interleave with paced lines. Same behavior as SecureCRT.
+    //
+    // Bracketed-paste short-circuit: if the remote has DEC 2004 active (vim, nano,
+    // emacs, modern readline), the paced path is both unnecessary and harmful. The
+    // remote accepts the paste atomically between \x1b[200~...\x1b[201~ sentinels
+    // and uses that signal to suppress autoindent/smartindent. Emitting raw paced
+    // lines skips the wrapper entirely, so e.g. pasting Python into vim compounds
+    // indentation on every line. When bracketed paste is live we fall through to
+    // the fast path, which delegates to term.paste() and gets the wrapping right.
 
     function sendPasteFast(sessionId, text) {
         const session = terminals.get(sessionId);
@@ -1971,6 +1979,16 @@
     function sendPastePaced(sessionId, text, lineDelayMs) {
         const session = terminals.get(sessionId);
         if (!session) return;
+
+        // Bracketed-paste remotes (vim, nano, emacs, modern readline) need the
+        // \x1b[200~...\x1b[201~ wrapping to suppress autoindent. term.paste()
+        // handles that for us; raw emit via window.nterm.send() does not. If
+        // the mode is live, pacing buys nothing and breaks paste integrity,
+        // so fall through to the fast path.
+        if (session.term.modes?.bracketedPasteMode) {
+            sendPasteFast(sessionId, text);
+            return;
+        }
 
         // Refuse if another paste is already draining on this session.
         // Queueing is more data-loss prone than telling the user to wait —

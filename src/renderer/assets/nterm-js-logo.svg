@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="nterm-js">
+  <title>nterm-js</title>
+
+  <!-- Palette: CRT green frame + bright phosphor amber arcs -->
+  <style>
+    svg {
+      --frame: #33FF33;
+      --arc:   #FFB000;
+    }
+    .stroke-frame { stroke: var(--frame); fill: none; }
+    .fill-frame   { fill:   var(--frame); stroke: none; }
+    .stroke-arc   { stroke: var(--arc);   fill: none; }
+  </style>
+
+  <defs>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="1.3"/></feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Stacked neon bloom: tight core + mid halo + wide aura -->
+    <filter id="arcBloom" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1"  result="b1"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3"  result="b2"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7"  result="b3"/>
+      <feComponentTransfer in="b3" result="b3a">
+        <feFuncA type="linear" slope="1.4"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="b3a"/>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <linearGradient id="crtScan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#33FF33" stop-opacity="0.08"/>
+      <stop offset="0.5" stop-color="#33FF33" stop-opacity="0"/>
+      <stop offset="1"   stop-color="#33FF33" stop-opacity="0.08"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Optional dark background (uncomment for solid-bg icon)
+  <rect width="400" height="400" fill="#0A0E14" rx="16"/>
+  -->
+
+  <!-- Phosphor amber electric arcs with stacked neon bloom -->
+  <g class="stroke-arc" stroke-width="2.2" opacity="1" filter="url(#arcBloom)">
+    <ellipse cx="200" cy="200" rx="148" ry="58" transform="rotate(30 200 200)"/>
+    <ellipse cx="200" cy="200" rx="148" ry="58" transform="rotate(-30 200 200)"/>
+  </g>
+
+  <!-- CRT scan gradient inside hex -->
+  <polygon points="50,200 125,70 275,70 350,200 275,330 125,330" fill="url(#crtScan)"/>
+
+  <!-- Hex frame -->
+  <polygon
+    points="50,200 125,70 275,70 350,200 275,330 125,330"
+    class="stroke-frame"
+    stroke-width="3.5"
+    stroke-linejoin="miter"
+    filter="url(#glow)"/>
+
+  <!-- Vertex diamond markers -->
+  <g class="fill-frame">
+    <rect x="-5.5" y="-5.5" width="11" height="11" transform="translate(50 200)  rotate(45)"/>
+    <rect x="-5.5" y="-5.5" width="11" height="11" transform="translate(125 70)  rotate(45)"/>
+    <rect x="-5.5" y="-5.5" width="11" height="11" transform="translate(275 70)  rotate(45)"/>
+    <rect x="-5.5" y="-5.5" width="11" height="11" transform="translate(350 200) rotate(45)"/>
+    <rect x="-5.5" y="-5.5" width="11" height="11" transform="translate(275 330) rotate(45)"/>
+    <rect x="-5.5" y="-5.5" width="11" height="11" transform="translate(125 330) rotate(45)"/>
+  </g>
+
+  <!-- Terminal prompt: >_ with blinking cursor -->
+  <g filter="url(#glow)">
+    <polyline
+      points="130,155 200,200 130,245"
+      class="stroke-frame"
+      stroke-width="15"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+    <rect x="222" y="180" width="42" height="42" class="fill-frame">
+      <animate attributeName="opacity"
+               values="1;0"
+               keyTimes="0;0.5"
+               dur="1.2s"
+               calcMode="discrete"
+               repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>
