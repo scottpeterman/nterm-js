@@ -6,7 +6,7 @@ Tabbed sessions, thirty themes, session capture, and a connection layer that wor
 
 #### See "Releases" for installable binaries - Window, Mac and Linux - v0.2.7 latest
 
-[![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/slides.gif)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/splash.jpg)
+[![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/splash.jpg)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/splash.jpg)
 
 ---
 
