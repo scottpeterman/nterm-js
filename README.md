@@ -1,10 +1,11 @@
 # nterm-js
 
-**A modern SSH, telnet, and serial terminal with a built-in encrypted credential vault.**
+**Free, multi-protocol terminal for network engineers and sysadmins.**
+SSH · telnet · serial · Windows/macOS/Linux · encrypted credential vault · git-friendly YAML session files
 
 Tabbed sessions, thirty themes, session capture, and a connection layer that works with every server or console port — modern or ancient. Electron desktop app, no runtime dependencies, no Python install required.
 
-#### See "Releases" for installable binaries - Window, Mac and Linux - v0.2.7 latest
+#### See "Releases" for installable binaries - Window, Mac and Linux - v0.2.9 latest
 
 [![nterm-js desktop — SSH terminal with session tree](https://raw.githubusercontent.com/scottpeterman/nterm-js/refs/heads/main/screenshots/splash.jpg)](https://github.com/scottpeterman/nterm-js/blob/main/screenshots/splash.jpg)
 
@@ -36,7 +37,8 @@ Download, install, connect. That's the pitch.
 * Tab-per-session with live connection status indicators (connecting / connected / disconnected / error)
 * Tab context menu: Close, Close Others, Close to the Right, Close All (plus Send Break entries on serial tabs)
 * Terminal font zoom (Cmd/Ctrl+= / Cmd/Ctrl+- / Cmd/Ctrl+0) — per-terminal, persists across sessions
-* Multi-line paste warning with preview and confirmation
+* Multi-line paste warning with preview, confirmation, and optional per-paste line-delay pacing for slow CLIs (network gear, GNS3 console, low-baud serial)
+* Backpressured terminal output — UI stays responsive when devices dump huge output (`cat`, `show tech-support`, full BGP table). Ctrl+C drains the local queue and snaps back to a prompt instead of waiting on in-flight bytes.
 * Configurable font size, font family, and cursor style
 * Press Enter to reconnect on disconnected or errored tabs
 * Refit-on-reconnect keeps xterm and the remote PTY in sync
@@ -436,6 +438,7 @@ Settings persist across launches in the OS-native config path:
 | `scrollbackLines` | `10000` | Scrollback buffer depth (500–100,000) |
 | `sidebarWidth` | `220` | Session tree width in pixels |
 | `pasteWarningThreshold` | `1` | Line count that triggers paste confirmation |
+| `defaultPasteLineDelayMs` | `0` | Default line-delay pacing for the paste dialog (ms; `0` disables pacing) |
 | `defaultUsername` | *(empty)* | Pre-filled username in connection dialog |
 | `defaultAuthMethod` | `password` | Default auth method in connection dialog |
 | `defaultPrivateKeyPath` | *(empty)* | Default private key path for key-based auth |
@@ -534,6 +537,8 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 * Refit-on-reconnect
 * Unified Settings dialog with live apply across open terminals
 * Platform-aware terminal font defaults with availability detection
+* Per-paste line-delay pacing for slow CLIs and serial console workflows
+* Backpressured output handling for large remote dumps, with Ctrl+C drain to escape mid-flood
 
 ### Next (pre-release polish)
 
@@ -546,6 +551,8 @@ TypeScript in `src/main/` and `src/preload/` compiles to `dist/`. The renderer i
 
 ### Planned
 
+* Colored tabs (per-session or per-folder) for at-a-glance disambiguation across many open sessions
+* Tab reordering via drag-and-drop
 * Auto-reconnect with exponential backoff
 * Auto-update via electron-updater
 * Session export (ANSI + plain text, with timestamps)

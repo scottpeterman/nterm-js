@@ -1448,6 +1448,22 @@
                 }
                 return;
             }
+
+            // Ctrl+C with significant pending output → drop the local
+            // queue and enter drain mode so the user actually gets
+            // their prompt back instead of waiting on the parser.
+            if (s && data.includes('\x03')) {
+                const queueBytes = s.writeQueue.reduce((a, c) => a + c.length, 0);
+                if (queueBytes > INTERRUPT_THRESHOLD || s.draining) {
+                    s.writeQueue.length = 0;
+                    s.suppressedBytes = (s.suppressedBytes || 0) + queueBytes;
+                    s.draining = true;
+                    clearTimeout(s.drainTimer);
+                    s.drainTimer = setTimeout(() => exitDrain(s), DRAIN_QUIET_MS);
+                    try { s.term.write('\r\n\x1b[33m^C — interrupting...\x1b[0m\r\n'); } catch {}
+                }
+            }
+
             window.nterm.send(sessionId, data);
         });
 
@@ -1494,8 +1510,12 @@
 
         // Store
         terminals.set(sessionId, {
+            sessionId,
             term, fitAddon, element: pane, tab, label,
             status: 'connecting',
+            // Write queue state — backpressure for large output bursts
+            writeQueue: [],
+            writing: false,
         });
 
         activateTab(sessionId);
@@ -1635,6 +1655,87 @@
         setStatus(`Terminal font: ${DEFAULT}px`);
     }
 
+    // ─── Write Queue (Backpressure for large output bursts) ──────────
+    // xterm.js's term.write() runs its parser synchronously. Feeding it
+    // a flood (e.g. `cat largefile`) blocks the event loop and freezes
+    // the UI. We funnel SSH output through a per-session queue and chain
+    // writes through xterm's write-completion callback, which yields to
+    // the browser between chunks — keeping input, rendering, and other
+    // IPC responsive even under sustained heavy output.
+    const WRITE_CHUNK_MAX = 16 * 1024;       // cap any single parser tick
+    const INTERRUPT_THRESHOLD = 32 * 1024;   // queue size that triggers drain on ^C
+    const DRAIN_QUIET_MS = 200;              // ms of silence before exiting drain mode
+
+    function enqueueWrite(session, data) {
+        if (!data || !session?.term) return;
+
+        // Drain mode (post-Ctrl+C): drop incoming chunks and reset the
+        // quiet-period timer. Once data stops arriving for DRAIN_QUIET_MS
+        // we exit drain mode and report the byte count dropped.
+        if (session.draining) {
+            session.suppressedBytes += data.length;
+            clearTimeout(session.drainTimer);
+            session.drainTimer = setTimeout(() => exitDrain(session), DRAIN_QUIET_MS);
+            return;
+        }
+
+        // Split oversize chunks so one parser tick can't block too long
+        if (data.length > WRITE_CHUNK_MAX) {
+            for (let i = 0; i < data.length; i += WRITE_CHUNK_MAX) {
+                session.writeQueue.push(data.slice(i, i + WRITE_CHUNK_MAX));
+            }
+        } else {
+            session.writeQueue.push(data);
+        }
+
+        if (!session.writing) {
+            session.writing = true;
+            drainWriteQueue(session);
+        }
+    }
+
+    function drainWriteQueue(session) {
+        if (!session.term || session.writeQueue.length === 0) {
+            session.writing = false;
+            return;
+        }
+        const chunk = session.writeQueue.shift();
+        try {
+            session.term.write(chunk, () => {
+                // Capture tap runs in the drain so stripping doesn't
+                // block the IPC handler and stays ordered with output.
+                const cap = captureState.get(session.sessionId);
+                if (cap?.active) {
+                    const stripped = cap.stripper.strip(chunk);
+                    if (stripped) {
+                        window.nterm.captureWrite(session.sessionId, stripped);
+                    }
+                }
+                drainWriteQueue(session);
+            });
+        } catch (err) {
+            // Terminal likely disposed mid-drain — drop the queue.
+            session.writing = false;
+            session.writeQueue.length = 0;
+        }
+    }
+
+    // Exit "drain mode" — called by a quiet-period timer after Ctrl+C
+    // to stop suppressing incoming output once the firehose has stopped.
+    function exitDrain(session) {
+        if (!session?.draining) return;
+        session.draining = false;
+        const dropped = session.suppressedBytes || 0;
+        session.suppressedBytes = 0;
+        session.drainTimer = null;
+        if (dropped > 0 && session.term) {
+            const kb = (dropped / 1024).toFixed(1);
+            try {
+                session.term.write(`\r\n\x1b[33m[dropped ${kb} KB after ^C]\x1b[0m\r\n`);
+            } catch {}
+        }
+    }
+
     // ─── SSHManager Messages ─────────────────────────────────
 
     window.nterm.onMessage((message) => {
@@ -1645,17 +1746,10 @@
         switch (type) {
             case 'output':
                 if (payload?.data) {
-                    // Write raw data to terminal (unchanged)
-                    session.term.write(payload.data);
-
-                    // Tap: if capture is active, strip ANSI and send to main
-                    const cap = captureState.get(sessionId);
-                    if (cap?.active) {
-                        const stripped = cap.stripper.strip(payload.data);
-                        if (stripped) {
-                            window.nterm.captureWrite(sessionId, stripped);
-                        }
-                    }
+                    // Route through the write queue. Capture tap moved
+                    // into drainWriteQueue so it runs ordered with the
+                    // parser, not synchronously on the IPC handler.
+                    enqueueWrite(session, payload.data);
                 }
                 break;
 

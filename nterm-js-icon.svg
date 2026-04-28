@@ -1,141 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="nterm-js">
+  <title>nterm-js</title>
+
+  <style>
+    svg {
+      --frame: #33FF33;
+      --arc:   #FFB000;
+      --bg:    #0A0E14;
+    }
+    .stroke-frame { stroke: var(--frame); fill: none; }
+    .fill-frame   { fill:   var(--frame); stroke: none; }
+  </style>
+
   <defs>
-    <!-- Main gradient for the terminal body -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1a1e2e"/>
-      <stop offset="100%" stop-color="#0d1017"/>
-    </linearGradient>
-    <!-- Accent gradient for the prompt/cursor -->
-    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00e5a0"/>
-      <stop offset="100%" stop-color="#00b8d4"/>
-    </linearGradient>
-    <!-- Network node glow -->
-    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#00e5a0" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#00e5a0" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Outer border gradient -->
-    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00e5a0" stop-opacity="0.7"/>
-      <stop offset="50%" stop-color="#00b8d4" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#00e5a0" stop-opacity="0.7"/>
-    </linearGradient>
-    <!-- Shadow filter -->
-    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.5"/>
+    <!-- diffuse amber halo replaces orbital arcs at icon scale -->
+    <filter id="halo" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12"/>
     </filter>
-    <!-- Glow filter for accent elements -->
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
+
+    <!-- tight green glow on frame + prompt -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="1.3"/></feComponentTransfer>
       <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <!-- Subtle glow for network lines -->
-    <filter id="lineGlow">
-      <feGaussianBlur stdDeviation="2" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
+        <feMergeNode/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
   </defs>
 
-  <!-- === BACKGROUND ROUNDED SQUARE === -->
-  <rect x="32" y="32" width="448" height="448" rx="72" ry="72" fill="url(#bgGrad)" filter="url(#shadow)"/>
-  <!-- Border highlight -->
-  <rect x="32" y="32" width="448" height="448" rx="72" ry="72" fill="none" stroke="url(#borderGrad)" stroke-width="2"/>
+  <!-- Dark rounded-square tile -->
+  <rect width="512" height="512" rx="96" fill="#0A0E14"/>
 
-  <!-- === TERMINAL WINDOW === -->
-  <!-- Terminal chrome bar -->
-  <rect x="72" y="80" width="368" height="28" rx="8" ry="8" fill="#232839"/>
-  <!-- Traffic light dots -->
-  <circle cx="92" cy="94" r="5.5" fill="#ff5f57"/>
-  <circle cx="110" cy="94" r="5.5" fill="#febc2e"/>
-  <circle cx="128" cy="94" r="5.5" fill="#28c840"/>
-  <!-- Terminal title -->
-  <text x="256" y="98" font-family="SF Mono, Menlo, Consolas, monospace" font-size="11" fill="#5a6078" text-anchor="middle" font-weight="500">nterm-js</text>
+  <!-- Amber bloom halo behind hex -->
+  <polygon
+    points="76,256 166,100 346,100 436,256 346,412 166,412"
+    stroke="#FFB000"
+    stroke-width="40"
+    fill="none"
+    opacity="0.6"
+    filter="url(#halo)"/>
 
-  <!-- Terminal body -->
-  <rect x="72" y="108" width="368" height="240" rx="0" ry="0" fill="#0f1219"/>
-  <!-- Bottom rounding -->
-  <rect x="72" y="320" width="368" height="28" rx="8" ry="8" fill="#0f1219"/>
-  <rect x="72" y="320" width="368" height="14" fill="#0f1219"/>
+  <!-- Green hex frame -->
+  <polygon
+    points="76,256 166,100 346,100 436,256 346,412 166,412"
+    class="stroke-frame"
+    stroke-width="18"
+    stroke-linejoin="miter"
+    filter="url(#glow)"/>
 
-  <!-- === TERMINAL CONTENT === -->
-  <!-- Prompt line 1 -->
-  <text x="92" y="145" font-family="SF Mono, Menlo, Consolas, monospace" font-size="16" font-weight="700">
-    <tspan fill="#00e5a0">❯</tspan>
-    <tspan fill="#5a6078" dx="8">ssh</tspan>
-    <tspan fill="#00b8d4" dx="6">core-rtr-01</tspan>
-  </text>
-
-  <!-- Prompt line 2 — output -->
-  <text x="92" y="172" font-family="SF Mono, Menlo, Consolas, monospace" font-size="13" fill="#3d4460">
-    Connected — IOS-XE 17.09.04a
-  </text>
-
-  <!-- Prompt line 3 -->
-  <text x="92" y="199" font-family="SF Mono, Menlo, Consolas, monospace" font-size="16" font-weight="700">
-    <tspan fill="#00e5a0">❯</tspan>
-    <tspan fill="#5a6078" dx="8">show ip bgp summary</tspan>
-  </text>
-
-  <!-- Prompt line 4 — output lines -->
-  <text x="92" y="226" font-family="SF Mono, Menlo, Consolas, monospace" font-size="12" fill="#3d4460">Neighbor     AS   MsgRcvd  State</text>
-  <text x="92" y="244" font-family="SF Mono, Menlo, Consolas, monospace" font-size="12" fill="#42e8a0">10.1.0.2   65001   48291  Estab</text>
-  <text x="92" y="262" font-family="SF Mono, Menlo, Consolas, monospace" font-size="12" fill="#42e8a0">10.1.0.6   65002   31044  Estab</text>
-
-  <!-- Blinking cursor line -->
-  <text x="92" y="294" font-family="SF Mono, Menlo, Consolas, monospace" font-size="16" font-weight="700">
-    <tspan fill="#00e5a0">❯</tspan>
-  </text>
-  <!-- Cursor block -->
-  <rect x="112" y="281" width="10" height="17" fill="#00e5a0" opacity="0.85">
-    <animate attributeName="opacity" values="0.85;0;0.85" dur="1.2s" repeatCount="indefinite"/>
-  </rect>
-
-  <!-- === NETWORK TOPOLOGY ELEMENT (bottom portion) === -->
-  <!-- Network connection lines -->
-  <g filter="url(#lineGlow)" opacity="0.8">
-    <!-- Hub to spokes -->
-    <line x1="256" y1="410" x2="156" y2="430" stroke="#00e5a0" stroke-width="2" stroke-opacity="0.5"/>
-    <line x1="256" y1="410" x2="356" y2="430" stroke="#00e5a0" stroke-width="2" stroke-opacity="0.5"/>
-    <line x1="256" y1="410" x2="196" y2="450" stroke="#00b8d4" stroke-width="1.5" stroke-opacity="0.4"/>
-    <line x1="256" y1="410" x2="316" y2="450" stroke="#00b8d4" stroke-width="1.5" stroke-opacity="0.4"/>
-    <!-- Cross links -->
-    <line x1="156" y1="430" x2="196" y2="450" stroke="#00e5a0" stroke-width="1" stroke-opacity="0.3"/>
-    <line x1="356" y1="430" x2="316" y2="450" stroke="#00e5a0" stroke-width="1" stroke-opacity="0.3"/>
+  <!-- >_ prompt -->
+  <g filter="url(#glow)">
+    <polyline
+      points="146,180 256,256 146,332"
+      class="stroke-frame"
+      stroke-width="42"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+    <rect x="296" y="220" width="76" height="76" class="fill-frame"/>
   </g>
-
-  <!-- Central hub node -->
-  <circle cx="256" cy="410" r="14" fill="url(#nodeGlow)"/>
-  <circle cx="256" cy="410" r="7" fill="#00e5a0"/>
-  <circle cx="256" cy="410" r="3.5" fill="#0f1219"/>
-
-  <!-- Spoke nodes -->
-  <circle cx="156" cy="430" r="5" fill="#00b8d4"/>
-  <circle cx="156" cy="430" r="2.5" fill="#0f1219"/>
-
-  <circle cx="356" cy="430" r="5" fill="#00b8d4"/>
-  <circle cx="356" cy="430" r="2.5" fill="#0f1219"/>
-
-  <circle cx="196" cy="450" r="4" fill="#00b8d4" opacity="0.7"/>
-  <circle cx="196" cy="450" r="2" fill="#0f1219"/>
-
-  <circle cx="316" cy="450" r="4" fill="#00b8d4" opacity="0.7"/>
-  <circle cx="316" cy="450" r="2" fill="#0f1219"/>
-
-  <!-- === DATA FLOW PARTICLES on network lines === -->
-  <circle r="2" fill="#00e5a0" opacity="0.9">
-    <animateMotion dur="2s" repeatCount="indefinite" path="M256,410 L156,430"/>
-  </circle>
-  <circle r="2" fill="#00e5a0" opacity="0.9">
-    <animateMotion dur="2.4s" repeatCount="indefinite" path="M256,410 L356,430"/>
-  </circle>
-  <circle r="1.5" fill="#00b8d4" opacity="0.7">
-    <animateMotion dur="3s" repeatCount="indefinite" path="M256,410 L316,450"/>
-  </circle>
 </svg>
